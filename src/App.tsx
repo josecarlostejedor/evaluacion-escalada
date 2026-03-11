@@ -738,25 +738,25 @@ export default function App() {
 
               {/* Report for PDF Generation - Hidden from view but accessible to html2canvas */}
               <div className="absolute left-[-9999px] top-0 overflow-hidden">
-                <div ref={reportRef} className="p-12 w-[800px] bg-white" style={{ color: '#000000', fontFamily: 'Arial, sans-serif', textRendering: 'geometricPrecision' }}>
+                <div ref={reportRef} className="p-12 w-[800px] bg-white" style={{ color: '#000000', fontFamily: 'Helvetica, Arial, sans-serif' }}>
                   <div className="pb-8 mb-8 grid grid-cols-12 items-end" style={{ borderBottom: '3px solid #000000' }}>
                     <div className="col-span-8">
-                      <h1 className="text-5xl font-bold" style={{ letterSpacing: '0', marginBottom: '8px' }}>Informe de Evaluación</h1>
+                      <h1 className="text-5xl font-bold" style={{ marginBottom: '8px' }}>Informe de Evaluación</h1>
                       <p className="text-xl">IES Lucía de Medrano &bull; Dept. Educación Física</p>
                     </div>
                     <div className="col-span-4 text-right">
                       <p className="font-bold text-xl mb-1">{new Date().toLocaleDateString()}</p>
-                      <p className="uppercase tracking-[0.1em] text-xs font-bold" style={{ opacity: 0.5 }}>{discipline === Discipline.KNOTS ? 'Cabuyería' : 'Escalada'}</p>
+                      <p className="uppercase text-xs font-bold" style={{ opacity: 0.5, letterSpacing: '1px' }}>{discipline === Discipline.KNOTS ? 'Cabuyería' : 'Escalada'}</p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-12 mb-12 p-8 rounded-2xl" style={{ backgroundColor: '#f8f9fa', border: '1px solid #e9ecef' }}>
                     <div>
-                      <p className="text-[10px] uppercase font-bold tracking-widest mb-2" style={{ opacity: 0.4 }}>Alumno</p>
+                      <p className="text-[10px] uppercase font-bold mb-2" style={{ opacity: 0.4, letterSpacing: '1px' }}>Alumno</p>
                       <p className="text-2xl font-bold">{student.lastName}, {student.firstName}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase font-bold tracking-widest mb-2" style={{ opacity: 0.4 }}>Curso y Grupo</p>
+                      <p className="text-[10px] uppercase font-bold mb-2" style={{ opacity: 0.4, letterSpacing: '1px' }}>Curso y Grupo</p>
                       <p className="text-2xl font-bold">{student.course} - {student.group}</p>
                     </div>
                   </div>
@@ -777,19 +777,19 @@ export default function App() {
                         <div key={q.id} className="pb-8" style={{ borderBottom: '1px solid #e9ecef', breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                           <div className="flex justify-between items-start mb-6">
                             <div className="flex-1 pr-12">
-                              <p className="font-bold text-xs uppercase tracking-widest mb-2" style={{ opacity: 0.4 }}>Pregunta {i + 1}</p>
-                              <p className="text-xl font-bold leading-normal">{q.text}</p>
+                              <p className="font-bold text-xs uppercase mb-2" style={{ opacity: 0.4, letterSpacing: '1px' }}>Pregunta {i + 1}</p>
+                              <p className="text-xl font-bold" style={{ lineHeight: '1.5', letterSpacing: 'normal', wordSpacing: 'normal' }}>{q.text}</p>
                             </div>
                             <div className="text-right min-w-[100px]">
                               <p className="font-bold text-2xl" style={{ color: ans?.isCorrect ? '#16a34a' : '#dc2626' }}>
                                 {ans?.pointsEarned || 0} / {q.points}
                               </p>
-                              <p className="text-[10px] uppercase font-bold tracking-widest">{ans?.isCorrect ? 'Correcto' : 'Incorrecto'}</p>
+                              <p className="text-[10px] uppercase font-bold" style={{ letterSpacing: '1px' }}>{ans?.isCorrect ? 'Correcto' : 'Incorrecto'}</p>
                             </div>
                           </div>
                           
                           <div className="p-6 rounded-xl" style={{ backgroundColor: '#f8f9fa' }}>
-                            <p className="text-[10px] uppercase font-bold tracking-widest opacity-40 mb-3">Respuesta del Alumno:</p>
+                            <p className="text-[10px] uppercase font-bold opacity-40 mb-3" style={{ letterSpacing: '1px' }}>Respuesta del Alumno:</p>
                             {q.type === QuestionType.IMAGE_UPLOAD && ans?.value ? (
                               <div className="flex gap-4 items-start">
                                 <div className="flex-1">
