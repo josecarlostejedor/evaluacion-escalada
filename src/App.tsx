@@ -229,7 +229,7 @@ export default function App() {
         try {
           const canvas = await html2canvas(element, {
             useCORS: true,
-            scale: 1.5,
+            scale: 2,
             logging: false,
             backgroundColor: '#ffffff',
             allowTaint: false,
@@ -238,7 +238,7 @@ export default function App() {
             windowWidth: 800
           });
           
-          const imgData = canvas.toDataURL('image/png');
+          const imgData = canvas.toDataURL('image/png', 1.0);
           const imgWidth = pageWidth - (margin * 2);
           const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
@@ -250,7 +250,7 @@ export default function App() {
           }
 
           pdf.addImage(imgData, 'PNG', margin, currentY, imgWidth, imgHeight, undefined, 'FAST');
-          currentY += imgHeight + 5;
+          currentY += imgHeight + 8;
         } catch (err) {
           console.error("Error capturing element:", err);
         }
@@ -736,31 +736,31 @@ export default function App() {
 
               {/* Report for PDF Generation - Hidden from view but accessible to html2canvas */}
               <div className="absolute left-[-9999px] top-0 overflow-hidden">
-                <div ref={reportRef} className="p-12 w-[800px] bg-white" style={{ color: '#000000', fontFamily: 'serif' }}>
-                  <div className="pb-8 mb-8 flex justify-between items-end" style={{ borderBottom: '2px solid #000000' }}>
-                    <div>
-                      <h1 className="text-4xl font-bold">Informe de Evaluación</h1>
-                      <p className="text-xl">IES Lucía de Medrano - Dept. Educación Física</p>
+                <div ref={reportRef} className="p-12 w-[800px] bg-white" style={{ color: '#000000', fontFamily: '"Times New Roman", Times, serif', textRendering: 'optimizeLegibility' }}>
+                  <div className="pb-8 mb-8 grid grid-cols-12 items-end" style={{ borderBottom: '3px solid #000000' }}>
+                    <div className="col-span-8">
+                      <h1 className="text-5xl font-bold" style={{ letterSpacing: '-0.02em', marginBottom: '4px' }}>Informe de Evaluación</h1>
+                      <p className="text-xl">IES Lucía de Medrano &bull; Dept. Educación Física</p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-bold">{new Date().toLocaleDateString()}</p>
-                      <p className="uppercase tracking-widest text-sm" style={{ opacity: 0.6 }}>{discipline === Discipline.KNOTS ? 'Cabuyería' : 'Escalada'}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-8 mb-12 p-6 rounded-2xl" style={{ backgroundColor: '#f9fafb' }}>
-                    <div>
-                      <p className="text-xs uppercase font-bold" style={{ opacity: 0.5 }}>Alumno</p>
-                      <p className="text-xl font-bold">{student.lastName}, {student.firstName}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase font-bold" style={{ opacity: 0.5 }}>Curso y Grupo</p>
-                      <p className="text-xl font-bold">{student.course} - {student.group}</p>
+                    <div className="col-span-4 text-right">
+                      <p className="font-bold text-xl mb-1">{new Date().toLocaleDateString()}</p>
+                      <p className="uppercase tracking-[0.2em] text-xs font-bold" style={{ opacity: 0.5 }}>{discipline === Discipline.KNOTS ? 'Cabuyería' : 'Escalada'}</p>
                     </div>
                   </div>
 
-                  <div className="space-y-8">
-                    <h3 className="text-2xl font-bold pb-2" style={{ borderBottom: '1px solid #000000' }}>Desglose de Respuestas</h3>
+                  <div className="grid grid-cols-2 gap-12 mb-12 p-8 rounded-2xl" style={{ backgroundColor: '#f8f9fa', border: '1px solid #e9ecef' }}>
+                    <div>
+                      <p className="text-[10px] uppercase font-bold tracking-widest mb-2" style={{ opacity: 0.4 }}>Alumno</p>
+                      <p className="text-2xl font-bold" style={{ letterSpacing: '-0.01em' }}>{student.lastName}, {student.firstName}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase font-bold tracking-widest mb-2" style={{ opacity: 0.4 }}>Curso y Grupo</p>
+                      <p className="text-2xl font-bold" style={{ letterSpacing: '-0.01em' }}>{student.course} - {student.group}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-10">
+                    <h3 className="text-3xl font-bold pb-4 mb-6" style={{ borderBottom: '2px solid #000000', letterSpacing: '-0.01em' }}>Desglose de Respuestas</h3>
                     {filteredQuestions.map((q, i) => {
                       const ans = answers.find(a => a.questionId === q.id);
                       
@@ -772,47 +772,47 @@ export default function App() {
                       }
 
                       return (
-                        <div key={q.id} className="pb-6" style={{ borderBottom: '1px solid #f3f4f6', breakInside: 'avoid', pageBreakInside: 'avoid' }}>
-                          <div className="flex justify-between items-start mb-4">
-                            <div className="max-w-[80%]">
-                              <p className="font-bold text-sm" style={{ opacity: 0.6 }}>Pregunta {i + 1}</p>
-                              <p className="text-lg font-medium">{q.text}</p>
+                        <div key={q.id} className="pb-8" style={{ borderBottom: '1px solid #e9ecef', breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+                          <div className="flex justify-between items-start mb-6">
+                            <div className="flex-1 pr-12">
+                              <p className="font-bold text-xs uppercase tracking-widest mb-2" style={{ opacity: 0.4 }}>Pregunta {i + 1}</p>
+                              <p className="text-xl font-bold leading-tight" style={{ letterSpacing: '-0.01em' }}>{q.text}</p>
                             </div>
-                            <div className="text-right">
-                              <p className="font-bold text-xl" style={{ color: ans?.isCorrect ? '#16a34a' : '#dc2626' }}>
+                            <div className="text-right min-w-[100px]">
+                              <p className="font-bold text-2xl" style={{ color: ans?.isCorrect ? '#16a34a' : '#dc2626' }}>
                                 {ans?.pointsEarned || 0} / {q.points}
                               </p>
-                              <p className="text-xs uppercase font-bold">{ans?.isCorrect ? 'Correcto' : 'Incorrecto'}</p>
+                              <p className="text-[10px] uppercase font-bold tracking-widest">{ans?.isCorrect ? 'Correcto' : 'Incorrecto'}</p>
                             </div>
                           </div>
                           
-                          <div className="p-4 rounded-xl" style={{ backgroundColor: '#f9fafb' }}>
-                            <p className="text-xs uppercase font-bold opacity-40 mb-2">Respuesta del Alumno:</p>
+                          <div className="p-6 rounded-xl" style={{ backgroundColor: '#f8f9fa' }}>
+                            <p className="text-[10px] uppercase font-bold tracking-widest opacity-40 mb-3">Respuesta del Alumno:</p>
                             {q.type === QuestionType.IMAGE_UPLOAD && ans?.value ? (
                               <div className="flex gap-4 items-start">
                                 <div className="flex-1">
-                                  <p className="text-xs mb-2 italic">Imagen enviada:</p>
+                                  <p className="text-xs mb-3 italic opacity-60">Imagen enviada:</p>
                                   <img 
                                     src={ans.value} 
                                     alt="Respuesta alumno" 
-                                    className="max-h-48 rounded-lg"
-                                    style={{ border: '1px solid #e5e7eb', display: 'block' }}
+                                    className="max-h-64 rounded-lg"
+                                    style={{ border: '1px solid #dee2e6', display: 'block' }}
                                     referrerPolicy="no-referrer"
                                     crossOrigin="anonymous"
                                   />
                                 </div>
                               </div>
                             ) : (
-                              <div className="space-y-4">
-                                <p className="text-lg italic">"{displayValue}"</p>
+                              <div className="space-y-6">
+                                <p className="text-xl italic font-medium">"{displayValue}"</p>
                                 {q.referenceImageUrl && (
                                   <div>
-                                    <p className="text-xs mb-2 italic">Imagen de referencia:</p>
+                                    <p className="text-xs mb-3 italic opacity-60">Imagen de referencia:</p>
                                     <img 
                                       src={q.referenceImageUrl} 
                                       alt="Referencia" 
-                                      className="max-h-48 rounded-lg"
-                                      style={{ border: '1px solid #e5e7eb', opacity: 0.5, display: 'block' }}
+                                      className="max-h-64 rounded-lg"
+                                      style={{ border: '1px solid #dee2e6', opacity: 0.7, display: 'block' }}
                                       referrerPolicy="no-referrer"
                                       crossOrigin="anonymous"
                                     />
@@ -826,10 +826,10 @@ export default function App() {
                     })}
                   </div>
 
-                  <div className="mt-12 pt-8 pb-8" style={{ borderTop: '2px solid #000000' }}>
+                  <div className="mt-16 pt-10 pb-10" style={{ borderTop: '3px solid #000000' }}>
                     <div>
-                      <p className="text-3xl font-bold">Puntuación Final: {answers.reduce((a, c) => a + c.pointsEarned, 0)} / {filteredQuestions.reduce((a, c) => a + c.points, 0)}</p>
-                      <p className="text-xl font-bold mt-2" style={{ color: '#5A5A40' }}>
+                      <p className="text-4xl font-bold" style={{ letterSpacing: '-0.02em' }}>Puntuación Final: {answers.reduce((a, c) => a + c.pointsEarned, 0)} / {filteredQuestions.reduce((a, c) => a + c.points, 0)}</p>
+                      <p className="text-2xl font-bold mt-4" style={{ color: '#5A5A40' }}>
                         Puntuación sobre 10 puntos: {(() => {
                           const score = answers.reduce((a, c) => a + c.pointsEarned, 0);
                           const max = filteredQuestions.reduce((a, c) => a + c.points, 0);
