@@ -78,18 +78,18 @@ export async function validateImageAnswer(
 
       PREGUNTA/TAREA: "${questionText}"
 
-      INSTRUCCIONES DE ANÁLISIS (PASO A PASO):
-      1. IDENTIFICACIÓN DEL PATRÓN: Mira la imagen de referencia (si existe) para entender el "mapa" del nudo (por dónde entra la cuerda, cuántas vueltas da, por dónde sale).
-      2. SEGUIMIENTO DEL RECORRIDO: En la foto del alumno, sigue visualmente el recorrido de la cuerda desde el chicote hasta el firme. Ignora el color, el grosor, el material de la cuerda y el fondo.
-      3. VERIFICACIÓN DE EQUIVALENCIA: ¿El patrón de entrelazado en la foto del alumno es funcionalmente idéntico al nudo solicitado? Si la cuerda sigue el mismo camino (pasa por encima/debajo en los mismos puntos), el nudo es CORRECTO.
-      4. TOLERANCIA MÁXIMA: Sé extremadamente flexible con la estética. Un nudo puede estar "feo" o poco apretado, pero si el recorrido es el correcto, es VÁLIDO. Solo marca como INCORRECTO si el recorrido es erróneo, peligroso o si es un nudo totalmente distinto.
-      5. EVITA FALSOS NEGATIVOS: No penalices por la iluminación, la calidad de la cámara o si la cuerda es vieja/nueva. Céntrate solo en el "esqueleto" del nudo.
+      INSTRUCCIONES DE ANÁLISIS CRÍTICO (TOPOLOGÍA PURA):
+      1. MAPEO DE CRUCES: Identifica el nudo solicitado. Analiza la parte central del nudo del alumno y verifica los puntos de intersección: ¿La cuerda pasa por ARRIBA o por ABAJO exactamente igual que en la estructura técnica del nudo?
+      2. ABSTRACCIÓN TOTAL: Ignora COMPLETAMENTE el color de la cuerda, su textura, el material (soga, cordino, cinta), el fondo y la iluminación. No busques una imagen idéntica, busca una ESTRUCTURA idéntica.
+      3. SEGUIMIENTO DEL RECORRIDO: Sigue visualmente el camino de la cuerda desde que entra en el nudo hasta que sale. Si el camino es el mismo que el del nudo solicitado, el nudo es CORRECTO.
+      4. TOLERANCIA TÉCNICA: Un nudo puede estar "flojo", "sucio" o mal peinado, pero si el recorrido de la cuerda es el correcto, DEBES marcarlo como isCorrect: true. Solo es INCORRECTO si el recorrido es erróneo o peligroso.
+      5. PERSPECTIVA: Ten en cuenta que el nudo puede estar rotado o visto desde otro ángulo. Analiza la relación espacial entre las partes de la cuerda.
 
       FORMATO DE RESPUESTA (JSON estricto):
       {
-        "analisis_recorrido": "Breve descripción de cómo has seguido el recorrido de la cuerda en la imagen del alumno",
+        "analisis_recorrido": "Descripción técnica de los cruces observados (ej: 'la cuerda entra por el bucle, pasa por debajo del firme y sale por encima')",
         "isCorrect": boolean,
-        "feedback": "Mensaje motivador de experto. Si es incorrecto, indica exactamente en qué punto del recorrido se equivoca la cuerda (ej: 'la cuerda debería pasar por debajo del bucle central')."
+        "feedback": "Si es correcto, mensaje positivo. Si es incorrecto, explica exactamente qué cruce está mal (ej: 'la cuerda debería pasar por debajo del lazo central, no por encima')."
       }` }
     ];
 
