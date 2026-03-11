@@ -209,11 +209,11 @@ export default function App() {
       };
 
       const checkPageBreak = (neededHeight: number) => {
-        if (y + neededHeight > pageHeight - 25) {
+        if (y + neededHeight > pageHeight - 30) {
           addFooter(pdf, pageNumber);
           pdf.addPage();
           pageNumber++;
-          y = margin;
+          y = margin + 5;
           return true;
         }
         return false;
@@ -236,12 +236,13 @@ export default function App() {
 
       // 1. HEADER
       pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(24);
-      pdf.setTextColor(0, 0, 0);
+      pdf.setFontSize(22);
+      pdf.setTextColor(40, 40, 40);
       pdf.text("Informe de Evaluación", margin, y);
       
       pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(11);
+      pdf.setFontSize(10);
+      pdf.setTextColor(100, 100, 100);
       pdf.text("IES Lucía de Medrano • Dept. Educación Física", margin, y + 7);
       
       pdf.setFontSize(10);
@@ -249,44 +250,41 @@ export default function App() {
       pdf.setFont("helvetica", "bold");
       pdf.text(discipline === Discipline.KNOTS ? 'CABUYERÍA' : 'ESCALADA', pageWidth - margin, y + 6, { align: 'right' });
       
-      y += 12;
-      pdf.setDrawColor(0, 0, 0);
-      pdf.setLineWidth(0.8);
-      pdf.line(margin, y, pageWidth - margin, y);
       y += 15;
+      pdf.setDrawColor(200, 200, 200);
+      pdf.setLineWidth(0.5);
+      pdf.line(margin, y, pageWidth - margin, y);
+      y += 12;
 
       // 2. STUDENT INFO BOX
-      pdf.setFillColor(248, 249, 250);
-      pdf.roundedRect(margin, y, contentWidth, 22, 3, 3, 'F');
+      pdf.setFillColor(245, 245, 240);
+      pdf.roundedRect(margin, y, contentWidth, 25, 3, 3, 'F');
       
       pdf.setFontSize(8);
       pdf.setTextColor(120, 120, 120);
       pdf.setFont("helvetica", "bold");
-      pdf.text("ALUMNO", margin + 8, y + 7);
-      pdf.text("CURSO Y GRUPO", margin + contentWidth / 2 + 8, y + 7);
+      pdf.text("ALUMNO", margin + 10, y + 8);
+      pdf.text("CURSO Y GRUPO", margin + contentWidth / 2 + 10, y + 8);
       
-      pdf.setFontSize(13);
+      pdf.setFontSize(12);
       pdf.setTextColor(0, 0, 0);
-      pdf.text(`${student.lastName}, ${student.firstName}`, margin + 8, y + 15);
-      pdf.text(`${student.course} - ${student.group}`, margin + contentWidth / 2 + 8, y + 15);
+      pdf.text(`${student.lastName}, ${student.firstName}`, margin + 10, y + 16);
+      pdf.text(`${student.course} - ${student.group}`, margin + contentWidth / 2 + 10, y + 16);
       
-      y += 35;
+      y += 40;
 
       // 3. QUESTIONS SECTION
-      pdf.setFontSize(18);
+      pdf.setFontSize(16);
       pdf.setFont("helvetica", "bold");
-      pdf.text("Desglose de Respuestas", margin, y);
-      y += 4;
-      pdf.setLineWidth(0.5);
-      pdf.line(margin, y, margin + 75, y);
+      pdf.setTextColor(40, 40, 40);
+      pdf.text("Desglose de Resultados", margin, y);
       y += 12;
 
       for (let i = 0; i < filteredQuestions.length; i++) {
         const q = filteredQuestions[i];
         const ans = answers.find(a => a.questionId === q.id);
         
-        // Prepare content
-        const qTitle = `Pregunta ${i + 1}`;
+        const qTitle = `PREGUNTA ${i + 1}`;
         const qText = q.text;
         const scoreText = `${ans?.pointsEarned || 0} / ${q.points}`;
         const statusText = ans?.isCorrect ? 'CORRECTO' : 'INCORRECTO';
@@ -297,118 +295,122 @@ export default function App() {
           displayValue = q.options?.[optIndex] || ans.value;
         }
 
-        // Calculate heights for page breaking
-        const wrappedQText = pdf.splitTextToSize(qText, contentWidth - 35);
-        const qTextHeight = wrappedQText.length * 6;
+        // Set font before splitting to ensure accurate width calculation
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(11);
+        const wrappedQText = pdf.splitTextToSize(qText, contentWidth - 65); // Very conservative width
+        const qTextHeight = wrappedQText.length * 7;
         
-        // Estimate box height
+        pdf.setFontSize(10);
         const wrappedAnsText = pdf.splitTextToSize(`"${displayValue}"`, contentWidth - 20);
-        const ansTextHeight = wrappedAnsText.length * 5;
-        let boxHeight = ansTextHeight + 15;
+        const ansTextHeight = wrappedAnsText.length * 6;
         
+        let boxHeight = ansTextHeight + 20;
         let hasStudentImage = q.type === QuestionType.IMAGE_UPLOAD && ans?.value;
         let hasRefImage = !!q.referenceImageUrl;
         
-        if (hasStudentImage) boxHeight += 55;
-        if (hasRefImage && !hasStudentImage) boxHeight += 55;
+        if (hasStudentImage) boxHeight += 60;
+        if (hasRefImage && !hasStudentImage) boxHeight += 60;
 
-        // Check if we need a new page
-        checkPageBreak(qTextHeight + boxHeight + 20);
+        // Check page break
+        checkPageBreak(qTextHeight + boxHeight + 35);
 
-        // Draw Question Header
+        // Header & Score
         pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(9);
+        pdf.setFontSize(10);
         pdf.setTextColor(150, 150, 150);
         pdf.text(qTitle, margin, y);
-        y += 5;
         
-        pdf.setFontSize(11);
-        pdf.setTextColor(0, 0, 0);
-        pdf.text(wrappedQText, margin, y);
-        
-        // Draw Score on the right
         pdf.setFontSize(14);
         pdf.setTextColor(ans?.isCorrect ? 22 : 220, ans?.isCorrect ? 163 : 38, ans?.isCorrect ? 74 : 38);
-        pdf.text(scoreText, pageWidth - margin, y + 2, { align: 'right' });
-        pdf.setFontSize(7);
-        pdf.text(statusText, pageWidth - margin, y + 6, { align: 'right' });
+        pdf.text(scoreText, pageWidth - margin, y, { align: 'right' });
         
-        y += qTextHeight + 4;
+        y += 6;
+        
+        pdf.setFontSize(8);
+        pdf.text(statusText, pageWidth - margin, y, { align: 'right' });
+        
+        y += 12; // Large gap to ensure no overlap with score/status
+        
+        // Question Text
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(11);
+        pdf.setTextColor(0, 0, 0);
+        wrappedQText.forEach((line: string) => {
+          pdf.text(line, margin, y);
+          y += 7;
+        });
+        
+        y += 6;
 
-        // Draw Answer Box
-        pdf.setFillColor(248, 249, 250);
-        pdf.roundedRect(margin, y, contentWidth, boxHeight, 2, 2, 'F');
+        // Answer Box
+        pdf.setFillColor(250, 250, 250);
+        pdf.setDrawColor(230, 230, 230);
+        pdf.roundedRect(margin, y, contentWidth, boxHeight, 2, 2, 'FD');
         
         pdf.setFontSize(7);
         pdf.setTextColor(150, 150, 150);
         pdf.setFont("helvetica", "bold");
-        pdf.text("RESPUESTA DEL ALUMNO:", margin + 5, y + 6);
+        pdf.text("RESPUESTA:", margin + 5, y + 7);
         
         pdf.setFont("helvetica", "italic");
         pdf.setFontSize(10);
-        pdf.setTextColor(0, 0, 0);
-        pdf.text(wrappedAnsText, margin + 5, y + 13);
+        pdf.setTextColor(30, 30, 30);
         
-        let currentBoxY = y + 13 + ansTextHeight + 2;
+        let ansY = y + 14;
+        wrappedAnsText.forEach((line: string) => {
+          pdf.text(line, margin + 5, ansY);
+          ansY += 6;
+        });
+        
+        let currentImgY = ansY + 4;
 
-        // Handle Student Image
         if (hasStudentImage && ans?.value) {
           try {
-            pdf.setFont("helvetica", "normal");
-            pdf.setFontSize(7);
-            pdf.setTextColor(150, 150, 150);
-            pdf.text("Imagen enviada:", margin + 5, currentBoxY);
-            pdf.addImage(ans.value, 'JPEG', margin + 5, currentBoxY + 2, 70, 45, undefined, 'FAST');
-            currentBoxY += 50;
-          } catch (e) {
-            console.error("Error adding student image", e);
-          }
+            pdf.addImage(ans.value, 'JPEG', margin + 5, currentImgY, 70, 45, undefined, 'FAST');
+            currentImgY += 50;
+          } catch (e) { console.error(e); }
         }
 
-        // Handle Reference Image (only if no student image or if space allows)
         if (hasRefImage && q.referenceImageUrl) {
           try {
             const base64 = await getBase64FromUrl(q.referenceImageUrl);
             if (base64) {
-              pdf.setFont("helvetica", "normal");
-              pdf.setFontSize(7);
-              pdf.setTextColor(150, 150, 150);
-              pdf.text("Imagen de referencia:", hasStudentImage ? margin + 85 : margin + 5, hasStudentImage ? y + 13 + ansTextHeight + 2 : currentBoxY);
-              pdf.addImage(base64, 'JPEG', hasStudentImage ? margin + 85 : margin + 5, hasStudentImage ? y + 13 + ansTextHeight + 4 : currentBoxY + 2, 70, 45, undefined, 'FAST');
+              const imgX = hasStudentImage ? margin + 85 : margin + 5;
+              const imgY = hasStudentImage ? ansY + 4 : currentImgY;
+              pdf.addImage(base64, 'JPEG', imgX, imgY, 70, 45, undefined, 'FAST');
             }
-          } catch (e) {
-            console.error("Error adding ref image", e);
-          }
+          } catch (e) { console.error(e); }
         }
         
-        y += boxHeight + 12;
+        y += boxHeight + 15;
       }
 
-      // 4. FINAL SCORE
-      checkPageBreak(35);
+      // Final Score Section
+      checkPageBreak(40);
       pdf.setDrawColor(0, 0, 0);
-      pdf.setLineWidth(1);
+      pdf.setLineWidth(0.5);
       pdf.line(margin, y, pageWidth - margin, y);
-      y += 12;
+      y += 15;
       
       const totalScore = answers.reduce((a, c) => a + c.pointsEarned, 0);
       const maxScore = filteredQuestions.reduce((a, c) => a + c.points, 0);
       const finalGrade = maxScore > 0 ? ((totalScore / maxScore) * 10).toFixed(2) : "0.00";
 
       pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(22);
+      pdf.setFontSize(20);
       pdf.setTextColor(0, 0, 0);
-      pdf.text(`Puntuación Final: ${totalScore} / ${maxScore}`, margin, y);
+      pdf.text(`Puntuación Total: ${totalScore} / ${maxScore}`, margin, y);
       y += 10;
-      pdf.setTextColor(90, 90, 64);
       pdf.setFontSize(16);
-      pdf.text(`Nota Final: ${finalGrade} / 10.00`, margin, y);
+      pdf.setTextColor(90, 90, 64);
+      pdf.text(`Calificación Final: ${finalGrade} / 10.00`, margin, y);
 
       addFooter(pdf, pageNumber);
       pdf.save(`Evaluacion_${student.lastName}_${student.firstName}.pdf`);
     } catch (error) {
       console.error("Error generating PDF:", error);
-      alert("No se pudo generar el PDF. Por favor, inténtalo de nuevo.");
+      alert("Error al generar el PDF. Inténtalo de nuevo.");
     } finally {
       setIsLoading(false);
     }
