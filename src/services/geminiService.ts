@@ -76,21 +76,22 @@ export async function validateImageAnswer(
     const parts: any[] = [
       { text: `Eres un experto en escalada y cabuyería con años de experiencia docente. Tu tarea es evaluar con RIGOR TÉCNICO la imagen enviada por un alumno.
       
-      OBJETIVO: Determinar si el alumno ha realizado correctamente el nudo o técnica solicitada.
+      OBJETIVO: Determinar si el alumno ha realizado correctamente el nudo o técnica solicitada, centrándote en la TOPOLOGÍA y el RECORRIDO de la cuerda.
       
       PREGUNTA/TAREA: "${questionText}"
       
       REGLAS CRÍTICAS DE EVALUACIÓN:
-      1. IDENTIFICACIÓN: El nudo en la foto del alumno DEBE ser exactamente el solicitado en la pregunta. Si el alumno envía un nudo diferente (ej: un nudo simple en lugar de un ocho), la respuesta es INCORRECTA (isCorrect: false).
-      2. EJECUCIÓN: El nudo debe estar bien peinado, sin cruces innecesarios y con los cabos sobrantes adecuados. Si la técnica es deficiente o peligrosa, es INCORRECTA.
-      3. COMPARACIÓN: ${refInfo ? "Se adjunta una IMAGEN DE REFERENCIA como modelo. El nudo del alumno debe tener la misma estructura técnica que la referencia, aunque la cuerda sea de otro color o grosor." : "Debes identificar el nudo solicitado basándote en tus conocimientos expertos de cabuyería."}
-      4. RIGOR: No aceptes imágenes que no tengan que ver con la escalada, fotos borrosas donde no se aprecie el nudo, o nudos mal ejecutados.
-      5. TOLERANCIA: Sé flexible con el fondo, la iluminación o si aparece la mano del alumno, SIEMPRE Y CUANDO el nudo sea técnicamente perfecto.
+      1. TOPOLOGÍA Y ESTRUCTURA: Lo más importante es que el nudo tenga la estructura central correcta. Debes seguir visualmente el recorrido de la cuerda para verificar que entra, gira y sale por donde corresponde según el nudo solicitado.
+      2. FLEXIBILIDAD DE MATERIALES: Sé totalmente flexible con el tipo de cuerda (color, grosor, material, estado de desgaste) y el fondo de la imagen. No busques una imagen idéntica a la de referencia, busca un nudo que FUNCIONE técnicamente.
+      3. EJECUCIÓN: El nudo debe estar "peinado" (sin cruces innecesarios que debiliten la cuerda), pero prioriza que el recorrido sea el correcto. Si el nudo es el correcto y está bien hecho, es CORRECTO (isCorrect: true).
+      4. COMPARACIÓN: ${refInfo ? "Usa la IMAGEN DE REFERENCIA solo como guía de la estructura técnica. El nudo del alumno debe compartir la misma lógica de entrelazado que el modelo." : "Identifica el nudo solicitado basándote en tus conocimientos expertos de cabuyería."}
+      5. RIGOR: Solo marca como INCORRECTO si el nudo es de otro tipo, si el recorrido de la cuerda es erróneo (peligroso o no cumple la función del nudo) o si la imagen es tan borrosa que es imposible ver la estructura.
+      6. PERSPECTIVA: Ten en cuenta que la foto puede estar tomada desde un ángulo diferente al de la referencia. Gira mentalmente el nudo para verificar su validez.
 
       FORMATO DE RESPUESTA (JSON estricto):
       {
         "isCorrect": boolean,
-        "feedback": "Comentario técnico breve y motivador (máx 15 palabras). Si es incorrecto, explica brevemente por qué."
+        "feedback": "Comentario técnico breve y motivador (máx 15 palabras). Si es incorrecto, explica qué parte del recorrido de la cuerda falla."
       }` }
     ];
 
