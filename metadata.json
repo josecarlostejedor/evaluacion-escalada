@@ -1,0 +1,7 @@
+{
+  "name": "EvaluaEscalada - IES Lucía de Medrano",
+  "description": "Sistema de evaluación técnica de cabuyería y escalada deportiva para alumnos de bachillerato.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
