@@ -261,10 +261,12 @@ export default function App() {
       
       for (const child of children) {
         // If it's the questions container, process its children individually for better page breaking
-        if (child.classList.contains('space-y-8')) {
+        if (child.classList.contains('space-y-10')) {
           const qChildren = Array.from(child.children) as HTMLElement[];
           for (const qChild of qChildren) {
             await addElementToPdf(qChild);
+            // Small delay to prevent UI blocking and ensure rendering
+            await new Promise(resolve => setTimeout(resolve, 100));
           }
         } else {
           await addElementToPdf(child);
@@ -736,31 +738,31 @@ export default function App() {
 
               {/* Report for PDF Generation - Hidden from view but accessible to html2canvas */}
               <div className="absolute left-[-9999px] top-0 overflow-hidden">
-                <div ref={reportRef} className="p-12 w-[800px] bg-white" style={{ color: '#000000', fontFamily: '"Times New Roman", Times, serif', textRendering: 'optimizeLegibility' }}>
+                <div ref={reportRef} className="p-12 w-[800px] bg-white" style={{ color: '#000000', fontFamily: 'Arial, sans-serif', textRendering: 'geometricPrecision' }}>
                   <div className="pb-8 mb-8 grid grid-cols-12 items-end" style={{ borderBottom: '3px solid #000000' }}>
                     <div className="col-span-8">
-                      <h1 className="text-5xl font-bold" style={{ letterSpacing: '-0.02em', marginBottom: '4px' }}>Informe de Evaluación</h1>
+                      <h1 className="text-5xl font-bold" style={{ letterSpacing: '0', marginBottom: '8px' }}>Informe de Evaluación</h1>
                       <p className="text-xl">IES Lucía de Medrano &bull; Dept. Educación Física</p>
                     </div>
                     <div className="col-span-4 text-right">
                       <p className="font-bold text-xl mb-1">{new Date().toLocaleDateString()}</p>
-                      <p className="uppercase tracking-[0.2em] text-xs font-bold" style={{ opacity: 0.5 }}>{discipline === Discipline.KNOTS ? 'Cabuyería' : 'Escalada'}</p>
+                      <p className="uppercase tracking-[0.1em] text-xs font-bold" style={{ opacity: 0.5 }}>{discipline === Discipline.KNOTS ? 'Cabuyería' : 'Escalada'}</p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-12 mb-12 p-8 rounded-2xl" style={{ backgroundColor: '#f8f9fa', border: '1px solid #e9ecef' }}>
                     <div>
                       <p className="text-[10px] uppercase font-bold tracking-widest mb-2" style={{ opacity: 0.4 }}>Alumno</p>
-                      <p className="text-2xl font-bold" style={{ letterSpacing: '-0.01em' }}>{student.lastName}, {student.firstName}</p>
+                      <p className="text-2xl font-bold">{student.lastName}, {student.firstName}</p>
                     </div>
                     <div>
                       <p className="text-[10px] uppercase font-bold tracking-widest mb-2" style={{ opacity: 0.4 }}>Curso y Grupo</p>
-                      <p className="text-2xl font-bold" style={{ letterSpacing: '-0.01em' }}>{student.course} - {student.group}</p>
+                      <p className="text-2xl font-bold">{student.course} - {student.group}</p>
                     </div>
                   </div>
 
                   <div className="space-y-10">
-                    <h3 className="text-3xl font-bold pb-4 mb-6" style={{ borderBottom: '2px solid #000000', letterSpacing: '-0.01em' }}>Desglose de Respuestas</h3>
+                    <h3 className="text-3xl font-bold pb-4 mb-6" style={{ borderBottom: '2px solid #000000' }}>Desglose de Respuestas</h3>
                     {filteredQuestions.map((q, i) => {
                       const ans = answers.find(a => a.questionId === q.id);
                       
@@ -776,7 +778,7 @@ export default function App() {
                           <div className="flex justify-between items-start mb-6">
                             <div className="flex-1 pr-12">
                               <p className="font-bold text-xs uppercase tracking-widest mb-2" style={{ opacity: 0.4 }}>Pregunta {i + 1}</p>
-                              <p className="text-xl font-bold leading-tight" style={{ letterSpacing: '-0.01em' }}>{q.text}</p>
+                              <p className="text-xl font-bold leading-normal">{q.text}</p>
                             </div>
                             <div className="text-right min-w-[100px]">
                               <p className="font-bold text-2xl" style={{ color: ans?.isCorrect ? '#16a34a' : '#dc2626' }}>
@@ -828,7 +830,7 @@ export default function App() {
 
                   <div className="mt-16 pt-10 pb-10" style={{ borderTop: '3px solid #000000' }}>
                     <div>
-                      <p className="text-4xl font-bold" style={{ letterSpacing: '-0.02em' }}>Puntuación Final: {answers.reduce((a, c) => a + c.pointsEarned, 0)} / {filteredQuestions.reduce((a, c) => a + c.points, 0)}</p>
+                      <p className="text-4xl font-bold">Puntuación Final: {answers.reduce((a, c) => a + c.pointsEarned, 0)} / {filteredQuestions.reduce((a, c) => a + c.points, 0)}</p>
                       <p className="text-2xl font-bold mt-4" style={{ color: '#5A5A40' }}>
                         Puntuación sobre 10 puntos: {(() => {
                           const score = answers.reduce((a, c) => a + c.pointsEarned, 0);
