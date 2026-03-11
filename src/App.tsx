@@ -191,93 +191,224 @@ export default function App() {
   };
 
   const downloadPDF = async () => {
-    if (!reportRef.current) return;
     setIsLoading(true);
     try {
-      // Ensure all images in the report are loaded before starting
-      const images = reportRef.current.getElementsByTagName('img');
-      const imagePromises = Array.from(images).map(img => {
-        if (img.complete) return Promise.resolve();
-        return new Promise(resolve => {
-          img.onload = resolve;
-          img.onerror = resolve;
-        });
-      });
-      await Promise.all(imagePromises);
-      
-      // Small extra delay for rendering
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 15;
-      const footerHeight = 20;
-      const maxContentHeight = pageHeight - footerHeight;
-      
-      let currentY = margin;
+      const margin = 20;
+      const contentWidth = pageWidth - (margin * 2);
+      let y = margin;
       let pageNumber = 1;
 
-      const addFooter = (p: number) => {
+      const addFooter = (p: jsPDF, n: number) => {
+        p.setFont("helvetica", "normal");
+        p.setFontSize(9);
+        p.setTextColor(150, 150, 150);
+        p.text(`Página ${n} | Evaluación IES Lucía de Medrano`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+      };
+
+      const checkPageBreak = (neededHeight: number) => {
+        if (y + neededHeight > pageHeight - 25) {
+          addFooter(pdf, pageNumber);
+          pdf.addPage();
+          pageNumber++;
+          y = margin;
+          return true;
+        }
+        return false;
+      };
+
+      const getBase64FromUrl = async (url: string): Promise<string> => {
+        try {
+          const response = await fetch(url);
+          const blob = await response.blob();
+          return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+        } catch (e) {
+          console.error("Error fetching image:", url, e);
+          return "";
+        }
+      };
+
+      // 1. HEADER
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(24);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text("Informe de Evaluación", margin, y);
+      
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(11);
+      pdf.text("IES Lucía de Medrano • Dept. Educación Física", margin, y + 7);
+      
+      pdf.setFontSize(10);
+      pdf.text(new Date().toLocaleDateString(), pageWidth - margin, y, { align: 'right' });
+      pdf.setFont("helvetica", "bold");
+      pdf.text(discipline === Discipline.KNOTS ? 'CABUYERÍA' : 'ESCALADA', pageWidth - margin, y + 6, { align: 'right' });
+      
+      y += 12;
+      pdf.setDrawColor(0, 0, 0);
+      pdf.setLineWidth(0.8);
+      pdf.line(margin, y, pageWidth - margin, y);
+      y += 15;
+
+      // 2. STUDENT INFO BOX
+      pdf.setFillColor(248, 249, 250);
+      pdf.roundedRect(margin, y, contentWidth, 22, 3, 3, 'F');
+      
+      pdf.setFontSize(8);
+      pdf.setTextColor(120, 120, 120);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("ALUMNO", margin + 8, y + 7);
+      pdf.text("CURSO Y GRUPO", margin + contentWidth / 2 + 8, y + 7);
+      
+      pdf.setFontSize(13);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text(`${student.lastName}, ${student.firstName}`, margin + 8, y + 15);
+      pdf.text(`${student.course} - ${student.group}`, margin + contentWidth / 2 + 8, y + 15);
+      
+      y += 35;
+
+      // 3. QUESTIONS SECTION
+      pdf.setFontSize(18);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("Desglose de Respuestas", margin, y);
+      y += 4;
+      pdf.setLineWidth(0.5);
+      pdf.line(margin, y, margin + 75, y);
+      y += 12;
+
+      for (let i = 0; i < filteredQuestions.length; i++) {
+        const q = filteredQuestions[i];
+        const ans = answers.find(a => a.questionId === q.id);
+        
+        // Prepare content
+        const qTitle = `Pregunta ${i + 1}`;
+        const qText = q.text;
+        const scoreText = `${ans?.pointsEarned || 0} / ${q.points}`;
+        const statusText = ans?.isCorrect ? 'CORRECTO' : 'INCORRECTO';
+        
+        let displayValue = ans?.value || 'Sin respuesta';
+        if (q.type === QuestionType.MULTIPLE_CHOICE && ans) {
+          const optIndex = parseInt(ans.value);
+          displayValue = q.options?.[optIndex] || ans.value;
+        }
+
+        // Calculate heights for page breaking
+        const wrappedQText = pdf.splitTextToSize(qText, contentWidth - 35);
+        const qTextHeight = wrappedQText.length * 6;
+        
+        // Estimate box height
+        const wrappedAnsText = pdf.splitTextToSize(`"${displayValue}"`, contentWidth - 20);
+        const ansTextHeight = wrappedAnsText.length * 5;
+        let boxHeight = ansTextHeight + 15;
+        
+        let hasStudentImage = q.type === QuestionType.IMAGE_UPLOAD && ans?.value;
+        let hasRefImage = !!q.referenceImageUrl;
+        
+        if (hasStudentImage) boxHeight += 55;
+        if (hasRefImage && !hasStudentImage) boxHeight += 55;
+
+        // Check if we need a new page
+        checkPageBreak(qTextHeight + boxHeight + 20);
+
+        // Draw Question Header
+        pdf.setFont("helvetica", "bold");
         pdf.setFontSize(9);
         pdf.setTextColor(150, 150, 150);
-        pdf.text(`Página ${p} | Evaluación IES Lucía de Medrano`, pageWidth / 2, pageHeight - 10, { align: 'center' });
-      };
+        pdf.text(qTitle, margin, y);
+        y += 5;
+        
+        pdf.setFontSize(11);
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(wrappedQText, margin, y);
+        
+        // Draw Score on the right
+        pdf.setFontSize(14);
+        pdf.setTextColor(ans?.isCorrect ? 22 : 220, ans?.isCorrect ? 163 : 38, ans?.isCorrect ? 74 : 38);
+        pdf.text(scoreText, pageWidth - margin, y + 2, { align: 'right' });
+        pdf.setFontSize(7);
+        pdf.text(statusText, pageWidth - margin, y + 6, { align: 'right' });
+        
+        y += qTextHeight + 4;
 
-      const addElementToPdf = async (element: HTMLElement) => {
-        if (!element) return;
-        try {
-          const canvas = await html2canvas(element, {
-            useCORS: true,
-            scale: 2,
-            logging: false,
-            backgroundColor: '#ffffff',
-            allowTaint: false,
-            imageTimeout: 15000,
-            scrollY: 0,
-            windowWidth: 800
-          });
-          
-          const imgData = canvas.toDataURL('image/png', 1.0);
-          const imgWidth = pageWidth - (margin * 2);
-          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        // Draw Answer Box
+        pdf.setFillColor(248, 249, 250);
+        pdf.roundedRect(margin, y, contentWidth, boxHeight, 2, 2, 'F');
+        
+        pdf.setFontSize(7);
+        pdf.setTextColor(150, 150, 150);
+        pdf.setFont("helvetica", "bold");
+        pdf.text("RESPUESTA DEL ALUMNO:", margin + 5, y + 6);
+        
+        pdf.setFont("helvetica", "italic");
+        pdf.setFontSize(10);
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(wrappedAnsText, margin + 5, y + 13);
+        
+        let currentBoxY = y + 13 + ansTextHeight + 2;
 
-          if (currentY + imgHeight > maxContentHeight) {
-            addFooter(pageNumber);
-            pdf.addPage();
-            pageNumber++;
-            currentY = margin;
+        // Handle Student Image
+        if (hasStudentImage && ans?.value) {
+          try {
+            pdf.setFont("helvetica", "normal");
+            pdf.setFontSize(7);
+            pdf.setTextColor(150, 150, 150);
+            pdf.text("Imagen enviada:", margin + 5, currentBoxY);
+            pdf.addImage(ans.value, 'JPEG', margin + 5, currentBoxY + 2, 70, 45, undefined, 'FAST');
+            currentBoxY += 50;
+          } catch (e) {
+            console.error("Error adding student image", e);
           }
-
-          pdf.addImage(imgData, 'PNG', margin, currentY, imgWidth, imgHeight, undefined, 'FAST');
-          currentY += imgHeight + 8;
-        } catch (err) {
-          console.error("Error capturing element:", err);
         }
-      };
 
-      const report = reportRef.current;
-      const children = Array.from(report.children) as HTMLElement[];
-      
-      for (const child of children) {
-        // If it's the questions container, process its children individually for better page breaking
-        if (child.classList.contains('space-y-10')) {
-          const qChildren = Array.from(child.children) as HTMLElement[];
-          for (const qChild of qChildren) {
-            await addElementToPdf(qChild);
-            // Small delay to prevent UI blocking and ensure rendering
-            await new Promise(resolve => setTimeout(resolve, 100));
+        // Handle Reference Image (only if no student image or if space allows)
+        if (hasRefImage && q.referenceImageUrl) {
+          try {
+            const base64 = await getBase64FromUrl(q.referenceImageUrl);
+            if (base64) {
+              pdf.setFont("helvetica", "normal");
+              pdf.setFontSize(7);
+              pdf.setTextColor(150, 150, 150);
+              pdf.text("Imagen de referencia:", hasStudentImage ? margin + 85 : margin + 5, hasStudentImage ? y + 13 + ansTextHeight + 2 : currentBoxY);
+              pdf.addImage(base64, 'JPEG', hasStudentImage ? margin + 85 : margin + 5, hasStudentImage ? y + 13 + ansTextHeight + 4 : currentBoxY + 2, 70, 45, undefined, 'FAST');
+            }
+          } catch (e) {
+            console.error("Error adding ref image", e);
           }
-        } else {
-          await addElementToPdf(child);
         }
+        
+        y += boxHeight + 12;
       }
+
+      // 4. FINAL SCORE
+      checkPageBreak(35);
+      pdf.setDrawColor(0, 0, 0);
+      pdf.setLineWidth(1);
+      pdf.line(margin, y, pageWidth - margin, y);
+      y += 12;
       
-      addFooter(pageNumber);
+      const totalScore = answers.reduce((a, c) => a + c.pointsEarned, 0);
+      const maxScore = filteredQuestions.reduce((a, c) => a + c.points, 0);
+      const finalGrade = maxScore > 0 ? ((totalScore / maxScore) * 10).toFixed(2) : "0.00";
+
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(22);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text(`Puntuación Final: ${totalScore} / ${maxScore}`, margin, y);
+      y += 10;
+      pdf.setTextColor(90, 90, 64);
+      pdf.setFontSize(16);
+      pdf.text(`Nota Final: ${finalGrade} / 10.00`, margin, y);
+
+      addFooter(pdf, pageNumber);
       pdf.save(`Evaluacion_${student.lastName}_${student.firstName}.pdf`);
     } catch (error) {
       console.error("Error generating PDF:", error);
-      alert("No se pudo generar el PDF. Asegúrate de tener una buena conexión y de que las imágenes se hayan cargado correctamente.");
+      alert("No se pudo generar el PDF. Por favor, inténtalo de nuevo.");
     } finally {
       setIsLoading(false);
     }
