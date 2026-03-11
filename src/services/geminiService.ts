@@ -74,22 +74,22 @@ export async function validateImageAnswer(
     }
 
     const parts: any[] = [
-      { text: `Eres un experto mundial en cabuyería y seguridad en montaña. Tu misión es validar si un nudo es TÉCNICAMENTE CORRECTO basándote ÚNICAMENTE en su TOPOLOGÍA (el recorrido físico de la cuerda).
+      { text: `Eres un experto mundial en seguridad de montaña y cabuyería. Tu única misión es validar la INTEGRIDAD TÉCNICA de un nudo basándote en su TOPOLOGÍA.
 
       PREGUNTA/TAREA: "${questionText}"
 
-      INSTRUCCIONES DE ANÁLISIS CRÍTICO (TOPOLOGÍA PURA):
-      1. MAPEO DE CRUCES: Identifica el nudo solicitado. Analiza la parte central del nudo del alumno y verifica los puntos de intersección: ¿La cuerda pasa por ARRIBA o por ABAJO exactamente igual que en la estructura técnica del nudo?
-      2. ABSTRACCIÓN TOTAL: Ignora COMPLETAMENTE el color de la cuerda, su textura, el material (soga, cordino, cinta), el fondo y la iluminación. No busques una imagen idéntica, busca una ESTRUCTURA idéntica.
-      3. SEGUIMIENTO DEL RECORRIDO: Sigue visualmente el camino de la cuerda desde que entra en el nudo hasta que sale. Si el camino es el mismo que el del nudo solicitado, el nudo es CORRECTO.
-      4. TOLERANCIA TÉCNICA: Un nudo puede estar "flojo", "sucio" o mal peinado, pero si el recorrido de la cuerda es el correcto, DEBES marcarlo como isCorrect: true. Solo es INCORRECTO si el recorrido es erróneo o peligroso.
-      5. PERSPECTIVA: Ten en cuenta que el nudo puede estar rotado o visto desde otro ángulo. Analiza la relación espacial entre las partes de la cuerda.
+      PROTOCOLO DE ANÁLISIS (MECÁNICO Y OBJETIVO):
+      1. ABSTRACCIÓN VISUAL: Ignora por completo el color de la cuerda, su grosor, el material, el desgaste, el fondo y la iluminación. Trata la cuerda como un diagrama de líneas.
+      2. ANÁLISIS DEL RECORRIDO CENTRAL: Enfócate exclusivamente en la parte central del nudo. Sigue el camino de la cuerda: ¿En cada intersección pasa por ENCIMA o por DEBAJO de la otra parte según el estándar técnico del nudo solicitado?
+      3. COMPARACIÓN ESTRUCTURAL: Compara el "esqueleto" del nudo del alumno con la imagen de referencia (si existe). El nudo es CORRECTO si el patrón de entrelazado es funcionalmente idéntico, sin importar el ángulo de la foto.
+      4. CRITERIO DE SEGURIDAD: Un nudo es CORRECTO (isCorrect: true) si el recorrido es el adecuado para que el nudo cumpla su función. No penalices nudos "feos", poco apretados o mal peinados si el recorrido es el correcto.
+      5. RIGOR TÉCNICO: Solo marca como INCORRECTO si el recorrido de la cuerda es erróneo (peligroso) o si el nudo es de un tipo totalmente diferente al solicitado.
 
       FORMATO DE RESPUESTA (JSON estricto):
       {
-        "analisis_recorrido": "Descripción técnica de los cruces observados (ej: 'la cuerda entra por el bucle, pasa por debajo del firme y sale por encima')",
+        "analisis_paso_a_paso": "Describe brevemente el recorrido que has observado en el nudo del alumno (ej: 'la cuerda entra, rodea el firme por detrás y sale por el bucle')",
         "isCorrect": boolean,
-        "feedback": "Si es correcto, mensaje positivo. Si es incorrecto, explica exactamente qué cruce está mal (ej: 'la cuerda debería pasar por debajo del lazo central, no por encima')."
+        "feedback": "Si es correcto, felicita. Si es incorrecto, indica exactamente dónde falla el recorrido (ej: 'el chicote debería pasar por dentro del bucle, no por fuera')."
       }` }
     ];
 
@@ -118,7 +118,7 @@ export async function validateImageAnswer(
     while (retries <= maxRetries) {
       try {
         response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: "gemini-3.1-pro-preview",
           contents: [{ parts }],
           config: {
             responseMimeType: "application/json"
