@@ -30,7 +30,7 @@ async function resizeImage(base64Str: string, maxDimension: number = 1024): Prom
       canvas.height = height;
       const ctx = canvas.getContext('2d');
       ctx?.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/jpeg', 0.8)); // Use JPEG with 80% quality
+      resolve(canvas.toDataURL('image/jpeg', 0.95)); // Increased quality for better rope detail
     };
     img.onerror = () => resolve(base64Str); // Fallback to original if error
     img.src = base64Str;
@@ -74,22 +74,22 @@ export async function validateImageAnswer(
     }
 
     const parts: any[] = [
-      { text: `Eres un experto mundial en seguridad de montaña y cabuyería. Tu única misión es validar la INTEGRIDAD TÉCNICA de un nudo basándote en su TOPOLOGÍA.
+      { text: `Eres un experto mundial en seguridad de montaña y cabuyería. Tu única misión es validar la INTEGRIDAD TÉCNICA de un nudo basándote EXCLUSIVAMENTE en su TOPOLOGÍA (el camino que sigue la cuerda).
 
       PREGUNTA/TAREA: "${questionText}"
 
-      PROTOCOLO DE ANÁLISIS (MECÁNICO Y OBJETIVO):
-      1. ABSTRACCIÓN VISUAL: Ignora por completo el color de la cuerda, su grosor, el material, el desgaste, el fondo y la iluminación. Trata la cuerda como un diagrama de líneas.
-      2. ANÁLISIS DEL RECORRIDO CENTRAL: Enfócate exclusivamente en la parte central del nudo. Sigue el camino de la cuerda: ¿En cada intersección pasa por ENCIMA o por DEBAJO de la otra parte según el estándar técnico del nudo solicitado?
-      3. COMPARACIÓN ESTRUCTURAL: Compara el "esqueleto" del nudo del alumno con la imagen de referencia (si existe). El nudo es CORRECTO si el patrón de entrelazado es funcionalmente idéntico, sin importar el ángulo de la foto.
-      4. CRITERIO DE SEGURIDAD: Un nudo es CORRECTO (isCorrect: true) si el recorrido es el adecuado para que el nudo cumpla su función. No penalices nudos "feos", poco apretados o mal peinados si el recorrido es el correcto.
-      5. RIGOR TÉCNICO: Solo marca como INCORRECTO si el recorrido de la cuerda es erróneo (peligroso) o si el nudo es de un tipo totalmente diferente al solicitado.
+      PROTOCOLO DE ANÁLISIS TOPOLÓGICO (OBLIGATORIO):
+      1. ABSTRACCIÓN TOTAL: Ignora el color, grosor, material, desgaste de la cuerda, fondo e iluminación. Trata la cuerda como un diagrama de flujo de líneas.
+      2. MAPEO DE INTERSECCIONES: Analiza la parte central del nudo. Identifica cada punto donde la cuerda se cruza. Verifica si la cuerda pasa por ENCIMA o por DEBAJO exactamente como dicta la técnica del nudo solicitado.
+      3. COMPARACIÓN DE RECORRIDO: Compara el recorrido (el "esqueleto") del nudo del alumno con la imagen de referencia. El nudo es CORRECTO si el patrón de entrelazado es funcionalmente idéntico, sin importar el ángulo de la foto o el tipo de cuerda.
+      4. REGLA DE ORO: Si el nudo es funcional y sigue el camino correcto, ES CORRECTO (isCorrect: true). No penalices nudos "feos", poco apretados o visualmente distintos a la referencia si la topología es la adecuada.
+      5. RIGOR TÉCNICO: Solo marca como INCORRECTO si el recorrido es erróneo (peligroso) o si el nudo es de un tipo diferente al solicitado.
 
       FORMATO DE RESPUESTA (JSON estricto):
       {
-        "analisis_paso_a_paso": "Describe brevemente el recorrido que has observado en el nudo del alumno (ej: 'la cuerda entra, rodea el firme por detrás y sale por el bucle')",
+        "analisis_topologico": "Describe el camino de la cuerda y los cruces clave observados",
         "isCorrect": boolean,
-        "feedback": "Si es correcto, felicita. Si es incorrecto, indica exactamente dónde falla el recorrido (ej: 'el chicote debería pasar por dentro del bucle, no por fuera')."
+        "feedback": "Si es correcto, felicita brevemente. Si es incorrecto, indica exactamente qué cruce de cuerda está mal (ej: 'la cuerda debería pasar por debajo del bucle central')."
       }` }
     ];
 
