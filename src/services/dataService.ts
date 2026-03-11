@@ -1,211 +1,194 @@
-import * as XLSX from 'xlsx';
-import { Question, Discipline, QuestionType, EvaluationResult } from '../types';
+import { GoogleGenAI } from "@google/genai";
 
-// Default Excel URL (User should replace this with their GitHub Raw URL)
-const DEFAULT_EXCEL_URL = 'https://github.com/josecarlostejedor/evaluacion-escalada/blob/main/preguntasescalada.xlsx';
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Helper to convert GitHub UI URLs to Raw URLs
-function getRawUrl(url: string): string {
-  if (!url) return url;
-  if (url.includes('github.com') && url.includes('/blob/')) {
-    return url
-      .replace('github.com', 'raw.githubusercontent.com')
-      .replace('/blob/', '/');
-  }
-  return url;
-}
+/**
+ * Resizes an image to a maximum dimension while maintaining aspect ratio.
+ * This helps avoid "INVALID_ARGUMENT" errors from Gemini due to large image sizes.
+ */
+async function resizeImage(base64Str: string, maxDimension: number = 1024): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
 
-export async function fetchQuestions(excelUrl: string = DEFAULT_EXCEL_URL): Promise<Question[]> {
-  const finalUrl = getRawUrl(excelUrl);
-  try {
-    if (!finalUrl || finalUrl.includes('MY_APP_URL')) {
-      console.warn('Excel URL not configured. Using mock questions.');
-      return getMockQuestions();
-    }
-
-    console.log('Fetching questions from:', finalUrl);
-    const response = await fetch(finalUrl);
-    if (!response.ok) {
-      throw new Error(`Error al descargar el archivo: ${response.status} ${response.statusText}`);
-    }
-    const arrayBuffer = await response.arrayBuffer();
-    
-    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-    const firstSheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[firstSheetName];
-    
-    // Use header: 1 to get an array of arrays, which is more predictable for mapping
-    const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
-
-    if (!rows || rows.length === 0) {
-      throw new Error('El archivo Excel está vacío.');
-    }
-
-    // Try to find the header row or assume the first row is data if it looks like it
-    let headerRowIndex = 0;
-    let hasHeaders = false;
-    
-    // Look for a row that contains keywords like "type", "text", "discipline"
-    for (let i = 0; i < Math.min(rows.length, 5); i++) {
-      const rowStr = rows[i].join('|').toLowerCase();
-      if (
-        rowStr.includes('type') || 
-        rowStr.includes('tipo') || 
-        rowStr.includes('text') || 
-        rowStr.includes('pregunta') ||
-        rowStr.includes('disciplina') ||
-        rowStr.includes('respuesta') ||
-        rowStr.includes('opciones')
-      ) {
-        headerRowIndex = i;
-        hasHeaders = true;
-        break;
-      }
-    }
-
-    const headers = hasHeaders ? rows[headerRowIndex].map(h => String(h || '').toLowerCase().replace(/[\s_]/g, '')) : [];
-    const dataRows = rows.slice(hasHeaders ? headerRowIndex + 1 : 0);
-
-    const questions = dataRows.map((row: any[], rowIndex: number) => {
-      if (!row || row.length === 0) return null;
-
-      // Helper to get value by header name or by common index
-      const getVal = (possibleHeaders: string[], defaultIndex: number) => {
-        if (hasHeaders) {
-          for (const pHeader of possibleHeaders) {
-            const idx = headers.indexOf(pHeader.toLowerCase().replace(/[\s_]/g, ''));
-            if (idx !== -1) return row[idx];
-          }
+      if (width > height) {
+        if (width > maxDimension) {
+          height *= maxDimension / width;
+          width = maxDimension;
         }
-        // Fallback to default index if within bounds
-        return row[defaultIndex];
-      };
-
-      const rawId = getVal(['id'], 0);
-      const rawDiscipline = String(getVal(['discipline', 'disciplina'], 1) || '').toUpperCase();
-      const rawType = String(getVal(['type', 'tipo'], 2) || '').toUpperCase();
-      const rawText = getVal(['text', 'pregunta', 'texto'], 3);
-      const rawOptions = getVal(['options', 'opciones'], 4);
-      const rawCorrectAnswer = getVal(['correctanswer', 'respuestacorrecta', 'respuesta'], 5);
-      const rawImageUrl = getVal(['referenceimagenurl', 'referenceimageurl', 'imagen', 'imageurl', 'urlimagen', 'foto', 'fotoreferencia', 'url'], 6);
-      const rawPoints = getVal(['points', 'puntos'], 7);
-
-      if (!rawText) return null;
-
-      // Type mapping
-      let type = QuestionType.MULTIPLE_CHOICE;
-      if (rawType.includes('IMAGEN') || rawType.includes('IMAGE') || rawType.includes('FOTO')) {
-        type = QuestionType.IMAGE_UPLOAD;
-      } else if (rawType.includes('TEST') || rawType.includes('CHOICE') || rawType.includes('OPCION')) {
-        type = QuestionType.MULTIPLE_CHOICE;
-      } else if (rawType.includes('TEXT') || rawType.includes('LIBRE')) {
-        type = QuestionType.FREE_TEXT;
-      } else if (rawType.includes('CODE') || rawType.includes('CODIGO')) {
-        type = QuestionType.CODE;
+      } else {
+        if (height > maxDimension) {
+          width *= maxDimension / height;
+          height = maxDimension;
+        }
       }
 
-      // Discipline mapping
-      let discipline = Discipline.KNOTS;
-      if (rawDiscipline.includes('NUDO') || rawDiscipline.includes('KNOT') || rawDiscipline.includes('CABUYERIA')) {
-        discipline = Discipline.KNOTS;
-      } else if (rawDiscipline.includes('ESCALADA') || rawDiscipline.includes('CLIMB') || rawDiscipline.includes('ROCA')) {
-        discipline = Discipline.CLIMBING;
-      }
-
-      return {
-        id: String(rawId || `q-${rowIndex}-${Math.random().toString(36).substr(2, 5)}`),
-        discipline: discipline as Discipline,
-        type: type as QuestionType,
-        text: String(rawText).trim(),
-        options: rawOptions ? String(rawOptions).split('|').map(o => o.trim()) : undefined,
-        correctAnswer: String(rawCorrectAnswer !== undefined ? rawCorrectAnswer : '').trim(),
-        referenceImageUrl: rawImageUrl ? getRawUrl(String(rawImageUrl).trim()) : undefined,
-        points: parseInt(String(rawPoints || '0'), 10),
-      } as Question;
-    }).filter(q => q !== null) as Question[];
-
-    // Final filter: must have text and if it's multiple choice, it must have options
-    return questions.filter((q: Question) => {
-      const hasText = q.text && q.text.trim().length > 0;
-      if (!hasText) return false;
-
-      if (q.type === QuestionType.MULTIPLE_CHOICE) {
-        return !!q.options && q.options.length > 1;
-      }
-      return true;
-    });
-  } catch (error) {
-    console.error('Error fetching questions from:', finalUrl, error);
-    // We throw the error so the UI can catch it and show a message
-    throw error;
-  }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.95)); // Increased quality for better rope detail
+    };
+    img.onerror = () => resolve(base64Str); // Fallback to original if error
+    img.src = base64Str;
+  });
 }
 
-export function getMockQuestions(): Question[] {
-  return [
-    {
-      id: '1',
-      discipline: Discipline.KNOTS,
-      type: QuestionType.MULTIPLE_CHOICE,
-      text: '¿Cuál de estos nudos es el más adecuado para encordarse al arnés?',
-      options: ['Ocho doble', 'As de guía', 'Nudo de alondra', 'Ballestrinque'],
-      correctAnswer: '0',
-      points: 2
-    },
-    {
-      id: '2',
-      discipline: Discipline.KNOTS,
-      type: QuestionType.IMAGE_UPLOAD,
-      text: 'Realiza un nudo de ocho doble y sube una foto clara.',
-      referenceImageUrl: 'https://picsum.photos/seed/knot8/400/300',
-      points: 5
-    },
-    {
-      id: '3',
-      discipline: Discipline.CLIMBING,
-      type: QuestionType.CODE,
-      text: 'Introduce el código de seguridad de 4 dígitos que aparece en la placa del rocódromo sector A.',
-      correctAnswer: '1234',
-      points: 3
-    }
-  ];
+function getMimeTypeAndData(base64Str: string): { mimeType: string; data: string } {
+  const match = base64Str.match(/^data:([^;]+);base64,(.+)$/);
+  if (match) {
+    return { mimeType: match[1], data: match[2] };
+  }
+  // Fallback if it's just the data part
+  return { mimeType: "image/jpeg", data: base64Str };
 }
 
-export async function logToGoogleSheets(result: EvaluationResult) {
-  const SCRIPT_URL = process.env.VITE_GOOGLE_SHEETS_URL;
-  if (!SCRIPT_URL) {
-    console.warn("Google Sheets URL not configured. Data:", result);
-    return;
-  }
-
-  // Calculate score over 10
-  const scoreOver10 = result.maxScore > 0 ? ((result.totalScore / result.maxScore) * 10).toFixed(2) : "0.00";
-  
-  // Count mistakes
-  const mistakes = result.answers.filter(a => !a.isCorrect).length;
-
-  const payload = {
-    nombre: result.student.firstName,
-    apellidos: result.student.lastName,
-    curso: result.student.course,
-    grupo: result.student.group,
-    edad: result.student.age,
-    puntuacion_cabuyeria: result.discipline === Discipline.KNOTS ? scoreOver10 : '',
-    fallos_cabuyeria: result.discipline === Discipline.KNOTS ? mistakes : '',
-    puntuacion_escalada: result.discipline === Discipline.CLIMBING ? scoreOver10 : '',
-    fallos_escalada: result.discipline === Discipline.CLIMBING ? mistakes : '',
-    fecha_cabuyeria: result.discipline === Discipline.KNOTS ? result.date : '',
-    fecha_escalada: result.discipline === Discipline.CLIMBING ? result.date : ''
-  };
-
+export async function validateImageAnswer(
+  studentImageBase64: string,
+  referenceImageUrl: string | undefined,
+  questionText: string
+): Promise<{ isCorrect: boolean; feedback: string }> {
   try {
-    await fetch(SCRIPT_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+    // Resize student image to avoid size limits
+    const resizedStudentImage = await resizeImage(studentImageBase64);
+    const studentInfo = getMimeTypeAndData(resizedStudentImage);
+
+    // Fetch reference image and convert to base64
+    let refInfo: { mimeType: string; data: string } | null = null;
+    
+    if (referenceImageUrl) {
+      try {
+        const refResponse = await fetch(referenceImageUrl, { mode: 'cors' });
+        if (!refResponse.ok) throw new Error("Failed to fetch reference image");
+        const refBlob = await refResponse.blob();
+        const refBase64 = await blobToBase64(refBlob);
+        // Also resize reference image just in case
+        const resizedRef = await resizeImage(refBase64);
+        refInfo = getMimeTypeAndData(resizedRef);
+      } catch (e) {
+        console.warn("Could not fetch reference image, validating without it:", e);
+      }
+    }
+
+    const parts: any[] = [
+      { text: `Actúa como un experto mundial en teoría de nudos, seguridad en montaña y visión por computadora. Tu tarea es validar la INTEGRIDAD TÉCNICA de un nudo basándote EXCLUSIVAMENTE en su TOPOLOGÍA (el camino físico de la cuerda).
+
+      PREGUNTA/TAREA: "${questionText}"
+
+      ### PROTOCOLO DE ANÁLISIS ESTRUCTURAL (OBLIGATORIO) ###
+
+      PASO 1: ANÁLISIS DE LA REFERENCIA (IMAGEN A)
+      - Describe la trayectoria de la cuerda siguiendo los cruces (ej. "Entra por arriba, cruza por debajo de la línea central, forma un bucle...").
+      - Identifica la secuencia de cruces (over/under) y el número de bucles.
+
+      PASO 2: ANÁLISIS DEL ALUMNO (IMAGEN B)
+      - Describe la trayectoria en la imagen del alumno bajo el mismo criterio técnico.
+      - Ignora sistemáticamente: Color, textura, grosor del material, fondo, iluminación y ángulo de cámara. Trata la cuerda como un diagrama de líneas.
+
+      PASO 3: COMPARACIÓN TOPOLÓGICA
+      - Determina si las dos estructuras son isomorfas (idénticas en forma técnica).
+      - ¿Es posible transformar el nudo del alumno en el de referencia simplemente tensando la cuerda sin deshacer ningún cruce?
+
+      PASO 4: VEREDICTO
+      - Si la topología coincide, el nudo es CORRECTO (isCorrect: true), incluso si visualmente es distinto o está "mal peinado".
+      - Solo marca como INCORRECTO si el recorrido es erróneo, peligroso o es un nudo diferente.
+
+      FORMATO DE RESPUESTA (JSON estricto):
+      {
+        "paso1_analisis_referencia": "Descripción técnica de la trayectoria en la referencia",
+        "paso2_analisis_alumno": "Descripción técnica de la trayectoria en la foto del alumno",
+        "paso3_comparacion": "Explicación de por qué coinciden o no topológicamente",
+        "isCorrect": boolean,
+        "feedback": "Mensaje motivador. Si es incorrecto, indica exactamente en qué punto del recorrido falla la cuerda (ej: 'el chicote debería pasar por debajo del bucle central')."
+      }` }
+    ];
+
+    if (refInfo) {
+      parts.push({ text: "IMAGEN DE REFERENCIA (MODELO A SEGUIR):" });
+      parts.push({
+        inlineData: {
+          mimeType: refInfo.mimeType,
+          data: refInfo.data
+        }
+      });
+    }
+
+    parts.push({ text: "IMAGEN DEL ALUMNO (A EVALUAR):" });
+    parts.push({
+      inlineData: {
+        mimeType: studentInfo.mimeType,
+        data: studentInfo.data
+      }
     });
-  } catch (error) {
-    console.error('Error logging to Google Sheets:', error);
+
+    let response;
+    let retries = 0;
+    const maxRetries = 2;
+    
+    while (retries <= maxRetries) {
+      try {
+        response = await ai.models.generateContent({
+          model: "gemini-3.1-pro-preview",
+          contents: [{ parts }],
+          config: {
+            responseMimeType: "application/json"
+          }
+        });
+        break;
+      } catch (err: any) {
+        const isQuotaError = err.message?.includes("429") || err.message?.includes("quota") || err.message?.includes("RESOURCE_EXHAUSTED");
+        if (isQuotaError && retries < maxRetries) {
+          retries++;
+          await new Promise(resolve => setTimeout(resolve, 2000 * retries));
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    const text = response?.text;
+    if (!text) throw new Error("Empty response from AI");
+    
+    const result = JSON.parse(text);
+    return {
+      isCorrect: !!result.isCorrect,
+      feedback: result.feedback || (result.isCorrect ? "Correcto" : "Incorrecto")
+    };
+  } catch (error: any) {
+    console.error("Error validating image:", error);
+    
+    // Check for specific API errors
+    const errorMsg = error.message || "";
+    if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
+      return { 
+        isCorrect: false, 
+        feedback: "El sistema está saturado. Por favor, espera 10 segundos y vuelve a intentarlo." 
+      };
+    }
+
+    if (errorMsg.includes("INVALID_ARGUMENT") || errorMsg.includes("image")) {
+      return { 
+        isCorrect: false, 
+        feedback: "Error técnico al procesar la imagen. Intenta tomar la foto de nuevo con menos brillo." 
+      };
+    }
+
+    return { 
+      isCorrect: false, 
+      feedback: "No se pudo validar la imagen. Asegúrate de que sea clara y esté bien iluminada." 
+    };
   }
 }
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
