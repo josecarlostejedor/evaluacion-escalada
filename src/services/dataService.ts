@@ -181,25 +181,29 @@ export async function logToGoogleSheets(result: EvaluationResult) {
   // Calculate score over 10
   const scoreOver10 = result.maxScore > 0 ? ((result.totalScore / result.maxScore) * 10).toFixed(2) : "0.00";
   
-  // Persist score in localStorage to calculate average across disciplines
+  // Count mistakes
+  const mistakes = result.answers.filter(a => !a.isCorrect).length;
+
+  // Persist all data in localStorage to calculate average and send full payload
   const studentKey = `${result.student.firstName}_${result.student.lastName}_${result.student.course}_${result.student.group}`.replace(/\s+/g, '_').toLowerCase();
-  const storageKey = `eval_scores_${studentKey}`;
-  const savedScores = JSON.parse(localStorage.getItem(storageKey) || '{}');
+  const storageKey = `eval_data_${studentKey}`;
+  const savedData = JSON.parse(localStorage.getItem(storageKey) || '{}');
   
-  // Update saved scores
-  savedScores[result.discipline] = scoreOver10;
-  localStorage.setItem(storageKey, JSON.stringify(savedScores));
+  // Update saved data for the current discipline
+  savedData[result.discipline] = {
+    score: scoreOver10,
+    mistakes: mistakes,
+    date: result.date
+  };
+  localStorage.setItem(storageKey, JSON.stringify(savedData));
 
   // Calculate average if both scores are present
   let mediaFinal = '';
-  if (savedScores[Discipline.KNOTS] && savedScores[Discipline.CLIMBING]) {
-    const n1 = parseFloat(savedScores[Discipline.KNOTS]);
-    const n2 = parseFloat(savedScores[Discipline.CLIMBING]);
+  if (savedData[Discipline.KNOTS] && savedData[Discipline.CLIMBING]) {
+    const n1 = parseFloat(savedData[Discipline.KNOTS].score);
+    const n2 = parseFloat(savedData[Discipline.CLIMBING].score);
     mediaFinal = ((n1 + n2) / 2).toFixed(2);
   }
-
-  // Count mistakes
-  const mistakes = result.answers.filter(a => !a.isCorrect).length;
 
   const payload = {
     nombre: result.student.firstName,
@@ -207,12 +211,14 @@ export async function logToGoogleSheets(result: EvaluationResult) {
     curso: result.student.course,
     grupo: result.student.group,
     edad: result.student.age,
-    puntuacion_cabuyeria: result.discipline === Discipline.KNOTS ? scoreOver10 : '',
-    fallos_cabuyeria: result.discipline === Discipline.KNOTS ? mistakes : '',
-    puntuacion_escalada: result.discipline === Discipline.CLIMBING ? scoreOver10 : '',
-    fallos_escalada: result.discipline === Discipline.CLIMBING ? mistakes : '',
-    fecha_cabuyeria: result.discipline === Discipline.KNOTS ? result.date : '',
-    fecha_escalada: result.discipline === Discipline.CLIMBING ? result.date : '',
+    // Send Knots data if it exists in storage
+    puntuacion_cabuyeria: savedData[Discipline.KNOTS]?.score || '',
+    fallos_cabuyeria: savedData[Discipline.KNOTS]?.mistakes || '',
+    fecha_cabuyeria: savedData[Discipline.KNOTS]?.date || '',
+    // Send Climbing data if it exists in storage
+    puntuacion_escalada: savedData[Discipline.CLIMBING]?.score || '',
+    fallos_escalada: savedData[Discipline.CLIMBING]?.mistakes || '',
+    fecha_escalada: savedData[Discipline.CLIMBING]?.date || '',
     nota_media: mediaFinal
   };
 
