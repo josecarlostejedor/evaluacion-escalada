@@ -1,12 +1,26 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Lazy initialization to avoid issues during build or if the key is missing at startup.
+let aiInstance: GoogleGenAI | null = null;
+
+function getAI(): GoogleGenAI {
+  if (!aiInstance) {
+    // In Vite, we prefer import.meta.env, but the project uses process.env via vite.config.ts define.
+    // We provide a fallback to avoid crashes if the variable is undefined.
+    const apiKey = process.env.GEMINI_API_KEY || "";
+    aiInstance = new GoogleGenAI({ apiKey });
+  }
+  return aiInstance;
+}
 
 /**
  * Resizes an image to a maximum dimension while maintaining aspect ratio.
  * This helps avoid "INVALID_ARGUMENT" errors from Gemini due to large image sizes.
  */
 async function resizeImage(base64Str: string, maxDimension: number = 1024): Promise<string> {
+  if (typeof window === 'undefined' || typeof Image === 'undefined') {
+    return base64Str;
+  }
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -46,6 +60,32 @@ function getMimeTypeAndData(base64Str: string): { mimeType: string; data: string
   return { mimeType: "image/jpeg", data: base64Str };
 }
 
+/**
+ * Rotates an image 180 degrees.
+ */
+async function rotateImage180(base64Str: string): Promise<string> {
+  if (typeof window === 'undefined' || typeof Image === 'undefined') {
+    return base64Str;
+  }
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.translate(img.width / 2, img.height / 2);
+        ctx.rotate(Math.PI);
+        ctx.drawImage(img, -img.width / 2, -img.height / 2);
+      }
+      resolve(canvas.toDataURL('image/jpeg', 0.95));
+    };
+    img.onerror = () => resolve(base64Str);
+    img.src = base64Str;
+  });
+}
+
 export async function validateImageAnswer(
   studentImageBase64: string,
   referenceImageUrl: string | undefined,
@@ -54,7 +94,10 @@ export async function validateImageAnswer(
   try {
     // Resize student image to avoid size limits
     const resizedStudentImage = await resizeImage(studentImageBase64);
+    const rotatedStudentImage = await rotateImage180(resizedStudentImage);
+    
     const studentInfo = getMimeTypeAndData(resizedStudentImage);
+    const rotatedInfo = getMimeTypeAndData(rotatedStudentImage);
 
     // Fetch reference image and convert to base64
     let refInfo: { mimeType: string; data: string } | null = null;
@@ -74,22 +117,44 @@ export async function validateImageAnswer(
     }
 
     const parts: any[] = [
-      { text: `Eres un experto mundial en seguridad de montaña y cabuyería. Tu única misión es validar la INTEGRIDAD TÉCNICA de un nudo basándote EXCLUSIVAMENTE en su TOPOLOGÍA (el camino que sigue la cuerda).
+      { text: `Eres un experto en análisis topológico de nudos y visión por computadora. Tu misión es validar si el nudo del alumno es estructuralmente idéntico al de referencia, ignorando estética y centrándote en la topología.
 
       PREGUNTA/TAREA: "${questionText}"
 
-      PROTOCOLO DE ANÁLISIS TOPOLÓGICO (OBLIGATORIO):
-      1. ABSTRACCIÓN TOTAL: Ignora el color, grosor, material, desgaste de la cuerda, fondo e iluminación. Trata la cuerda como un diagrama de flujo de líneas.
-      2. MAPEO DE INTERSECCIONES: Analiza la parte central del nudo. Identifica cada punto donde la cuerda se cruza. Verifica si la cuerda pasa por ENCIMA o por DEBAJO exactamente como dicta la técnica del nudo solicitado.
-      3. COMPARACIÓN DE RECORRIDO: Compara el recorrido (el "esqueleto") del nudo del alumno con la imagen de referencia. El nudo es CORRECTO si el patrón de entrelazado es funcionalmente idéntico, sin importar el ángulo de la foto o el tipo de cuerda.
-      4. REGLA DE ORO: Si el nudo es funcional y sigue el camino correcto, ES CORRECTO (isCorrect: true). No penalices nudos "feos", poco apretados o visualmente distintos a la referencia si la topología es la adecuada.
-      5. RIGOR TÉCNICO: Solo marca como INCORRECTO si el recorrido es erróneo (peligroso) o si el nudo es de un tipo diferente al solicitado.
+      ### ARQUITECTURA DE VERIFICACIÓN TOPOLÓGICA ###
+
+      1. DETECCIÓN Y ESQUELETO:
+         - Reduce mentalmente la cuerda a una línea central (esqueleto). Ignora grosor, color y material.
+         - Aísla el nudo central del fondo.
+
+      2. IDENTIFICACIÓN DE CRUCES Y GRAFO:
+         - Identifica cada punto donde la cuerda se cruza consigo misma.
+         - Determina qué segmento pasa sobre (over) y cuál bajo (under) en cada cruce.
+         - Construye un grafo topológico: Nodos = cruces, Aristas = segmentos de cuerda.
+
+      3. COMPARACIÓN MULTI-ORIENTACIÓN:
+         - Analiza la imagen del alumno en su orientación original y en su rotación de 180° (proporcionadas abajo).
+         - Considera rotaciones, espejos y deformaciones elásticas (el nudo sigue siendo el mismo si no se deshacen cruces).
+
+      4. SISTEMA DE PUNTUACIÓN (0-100):
+         - Número de cruces coincide: +30 pts
+         - Patrón over/under coincide: +30 pts
+         - Número de bucles coincide: +20 pts
+         - Conectividad del grafo coincide: +20 pts
+
+      ### REGLAS DE CLASIFICACIÓN ###
+      - 90-100: CORRECTO (isCorrect: true)
+      - 70-89: PROBABLEMENTE CORRECTO (isCorrect: true - sé flexible si la topología es clara)
+      - <70: INCORRECTO (isCorrect: false)
 
       FORMATO DE RESPUESTA (JSON estricto):
       {
-        "analisis_topologico": "Describe el camino de la cuerda y los cruces clave observados",
+        "analisis_esqueleto": "Descripción del esqueleto detectado",
+        "mapeo_cruces": "Lista de cruces detectados (ej: Cruce 1: superior sobre inferior)",
+        "grafo_topologico": "Descripción de la conectividad del grafo",
+        "puntuacion_similitud": number,
         "isCorrect": boolean,
-        "feedback": "Si es correcto, felicita brevemente. Si es incorrecto, indica exactamente qué cruce de cuerda está mal (ej: 'la cuerda debería pasar por debajo del bucle central')."
+        "feedback": "Si es correcto, felicita. Si es incorrecto, explica el fallo topológico específico basado en el recorrido de la cuerda."
       }` }
     ];
 
@@ -103,11 +168,19 @@ export async function validateImageAnswer(
       });
     }
 
-    parts.push({ text: "IMAGEN DEL ALUMNO (A EVALUAR):" });
+    parts.push({ text: "IMAGEN DEL ALUMNO (ORIENTACIÓN ORIGINAL):" });
     parts.push({
       inlineData: {
         mimeType: studentInfo.mimeType,
         data: studentInfo.data
+      }
+    });
+
+    parts.push({ text: "IMAGEN DEL ALUMNO (ROTADA 180° PARA DOBLE VERIFICACIÓN):" });
+    parts.push({
+      inlineData: {
+        mimeType: rotatedInfo.mimeType,
+        data: rotatedInfo.data
       }
     });
 
@@ -117,6 +190,7 @@ export async function validateImageAnswer(
     
     while (retries <= maxRetries) {
       try {
+        const ai = getAI();
         response = await ai.models.generateContent({
           model: "gemini-3.1-pro-preview",
           contents: [{ parts }],
@@ -171,6 +245,9 @@ export async function validateImageAnswer(
 }
 
 function blobToBase64(blob: Blob): Promise<string> {
+  if (typeof window === 'undefined' || typeof FileReader === 'undefined') {
+    return Promise.resolve("");
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => resolve(reader.result as string);
