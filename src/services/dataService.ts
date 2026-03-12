@@ -46,6 +46,29 @@ function getMimeTypeAndData(base64Str: string): { mimeType: string; data: string
   return { mimeType: "image/jpeg", data: base64Str };
 }
 
+/**
+ * Rotates an image 180 degrees.
+ */
+async function rotateImage180(base64Str: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.translate(img.width / 2, img.height / 2);
+        ctx.rotate(Math.PI);
+        ctx.drawImage(img, -img.width / 2, -img.height / 2);
+      }
+      resolve(canvas.toDataURL('image/jpeg', 0.95));
+    };
+    img.onerror = () => resolve(base64Str);
+    img.src = base64Str;
+  });
+}
+
 export async function validateImageAnswer(
   studentImageBase64: string,
   referenceImageUrl: string | undefined,
@@ -54,7 +77,10 @@ export async function validateImageAnswer(
   try {
     // Resize student image to avoid size limits
     const resizedStudentImage = await resizeImage(studentImageBase64);
+    const rotatedStudentImage = await rotateImage180(resizedStudentImage);
+    
     const studentInfo = getMimeTypeAndData(resizedStudentImage);
+    const rotatedInfo = getMimeTypeAndData(rotatedStudentImage);
 
     // Fetch reference image and convert to base64
     let refInfo: { mimeType: string; data: string } | null = null;
@@ -74,35 +100,44 @@ export async function validateImageAnswer(
     }
 
     const parts: any[] = [
-      { text: `Actúa como un experto mundial en teoría de nudos, seguridad en montaña y visión por computadora. Tu tarea es validar la INTEGRIDAD TÉCNICA de un nudo basándote EXCLUSIVAMENTE en su TOPOLOGÍA (el camino físico de la cuerda).
+      { text: `Eres un experto en análisis topológico de nudos y visión por computadora. Tu misión es validar si el nudo del alumno es estructuralmente idéntico al de referencia, ignorando estética y centrándote en la topología.
 
       PREGUNTA/TAREA: "${questionText}"
 
-      ### PROTOCOLO DE ANÁLISIS ESTRUCTURAL (OBLIGATORIO) ###
+      ### ARQUITECTURA DE VERIFICACIÓN TOPOLÓGICA ###
 
-      PASO 1: ANÁLISIS DE LA REFERENCIA (IMAGEN A)
-      - Describe la trayectoria de la cuerda siguiendo los cruces (ej. "Entra por arriba, cruza por debajo de la línea central, forma un bucle...").
-      - Identifica la secuencia de cruces (over/under) y el número de bucles.
+      1. DETECCIÓN Y ESQUELETO:
+         - Reduce mentalmente la cuerda a una línea central (esqueleto). Ignora grosor, color y material.
+         - Aísla el nudo central del fondo.
 
-      PASO 2: ANÁLISIS DEL ALUMNO (IMAGEN B)
-      - Describe la trayectoria en la imagen del alumno bajo el mismo criterio técnico.
-      - Ignora sistemáticamente: Color, textura, grosor del material, fondo, iluminación y ángulo de cámara. Trata la cuerda como un diagrama de líneas.
+      2. IDENTIFICACIÓN DE CRUCES Y GRAFO:
+         - Identifica cada punto donde la cuerda se cruza consigo misma.
+         - Determina qué segmento pasa sobre (over) y cuál bajo (under) en cada cruce.
+         - Construye un grafo topológico: Nodos = cruces, Aristas = segmentos de cuerda.
 
-      PASO 3: COMPARACIÓN TOPOLÓGICA
-      - Determina si las dos estructuras son isomorfas (idénticas en forma técnica).
-      - ¿Es posible transformar el nudo del alumno en el de referencia simplemente tensando la cuerda sin deshacer ningún cruce?
+      3. COMPARACIÓN MULTI-ORIENTACIÓN:
+         - Analiza la imagen del alumno en su orientación original y en su rotación de 180° (proporcionadas abajo).
+         - Considera rotaciones, espejos y deformaciones elásticas (el nudo sigue siendo el mismo si no se deshacen cruces).
 
-      PASO 4: VEREDICTO
-      - Si la topología coincide, el nudo es CORRECTO (isCorrect: true), incluso si visualmente es distinto o está "mal peinado".
-      - Solo marca como INCORRECTO si el recorrido es erróneo, peligroso o es un nudo diferente.
+      4. SISTEMA DE PUNTUACIÓN (0-100):
+         - Número de cruces coincide: +30 pts
+         - Patrón over/under coincide: +30 pts
+         - Número de bucles coincide: +20 pts
+         - Conectividad del grafo coincide: +20 pts
+
+      ### REGLAS DE CLASIFICACIÓN ###
+      - 90-100: CORRECTO (isCorrect: true)
+      - 70-89: PROBABLEMENTE CORRECTO (isCorrect: true - sé flexible si la topología es clara)
+      - <70: INCORRECTO (isCorrect: false)
 
       FORMATO DE RESPUESTA (JSON estricto):
       {
-        "paso1_analisis_referencia": "Descripción técnica de la trayectoria en la referencia",
-        "paso2_analisis_alumno": "Descripción técnica de la trayectoria en la foto del alumno",
-        "paso3_comparacion": "Explicación de por qué coinciden o no topológicamente",
+        "analisis_esqueleto": "Descripción del esqueleto detectado",
+        "mapeo_cruces": "Lista de cruces detectados (ej: Cruce 1: superior sobre inferior)",
+        "grafo_topologico": "Descripción de la conectividad del grafo",
+        "puntuacion_similitud": number,
         "isCorrect": boolean,
-        "feedback": "Mensaje motivador. Si es incorrecto, indica exactamente en qué punto del recorrido falla la cuerda (ej: 'el chicote debería pasar por debajo del bucle central')."
+        "feedback": "Si es correcto, felicita. Si es incorrecto, explica el fallo topológico específico basado en el recorrido de la cuerda."
       }` }
     ];
 
@@ -116,11 +151,19 @@ export async function validateImageAnswer(
       });
     }
 
-    parts.push({ text: "IMAGEN DEL ALUMNO (A EVALUAR):" });
+    parts.push({ text: "IMAGEN DEL ALUMNO (ORIENTACIÓN ORIGINAL):" });
     parts.push({
       inlineData: {
         mimeType: studentInfo.mimeType,
         data: studentInfo.data
+      }
+    });
+
+    parts.push({ text: "IMAGEN DEL ALUMNO (ROTADA 180° PARA DOBLE VERIFICACIÓN):" });
+    parts.push({
+      inlineData: {
+        mimeType: rotatedInfo.mimeType,
+        data: rotatedInfo.data
       }
     });
 
