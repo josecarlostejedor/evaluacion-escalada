@@ -43,8 +43,12 @@ async function resizeImage(base64Str: string, maxDimension: number = 1024): Prom
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d');
-      ctx?.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/jpeg', 0.95)); // Increased quality for better rope detail
+      if (ctx) {
+        // Enhance contrast and sharpness to help AI see rope edges and crossings
+        ctx.filter = 'contrast(1.3) brightness(1.05) saturate(1.1)';
+        ctx.drawImage(img, 0, 0, width, height);
+      }
+      resolve(canvas.toDataURL('image/jpeg', 0.92)); // High quality for detail
     };
     img.onerror = () => resolve(base64Str); // Fallback to original if error
     img.src = base64Str;
@@ -117,29 +121,33 @@ export async function validateImageAnswer(
     }
 
     const parts: any[] = [
-      { text: `Eres un experto mundial en topología de nudos y visión artificial avanzada. Tu misión es validar si el nudo en la imagen del alumno es ESTRUCTURALMENTE IDÉNTICO al nudo de referencia, basándote exclusivamente en el recorrido de la cuerda (topología).
+      { text: `Eres un experto mundial en TOPOLOGÍA MATEMÁTICA de nudos y teoría de grafos. Tu misión es determinar si el nudo del alumno es ESTRUCTURALMENTE IDÉNTICO al de referencia mediante un análisis de isomorfismo de grafos.
 
       CONTEXTO: "${questionText}"
 
-      ### PROTOCOLO "ANTIFALLOS" (ANÁLISIS PASO A PASO) ###
-      1. Analiza esta imagen paso a paso antes de nombrar el nudo.
-      2. Identifica el recorrido del cabo: observa detalladamente cómo entra y sale de cada cruce (quién pasa por arriba y quién por abajo).
-      3. Identifica el recorrido del cabo: observa si los dos extremos (el chicote y el firme) de cada lado salen PARALELOS y por el MISMO LADO del bucle que los envuelve.
-      4. Ignora si la silueta general parece una forma conocida (como un número o un ocho).
-      5. Si los cabos salen juntos y paralelos, confírmame si es un nudo de rizo (llano).
-      6. No te dejes engañar por la torsión de la cuerda, el material, el color o el ángulo de la foto.
+      ### PROTOCOLO DE EXTRACCIÓN TOPOLÓGICA (OBLIGATORIO) ###
+      
+      PASO 1: MAPEO DE LA REFERENCIA
+      - Identifica cada punto de cruce.
+      - Determina el patrón "OVER/UNDER" (qué segmento pisa a cuál).
+      - Mapea la conectividad de los extremos (chicotes y firmes).
 
-      ### REGLAS DE ORO ###
-      - Ignora por completo el color, grosor, textura de la cuerda, el fondo o la iluminación.
-      - Céntrate únicamente en la geometría del entrelazado (patrón over/under).
-      - El nudo es correcto si la disposición de cruces y bucles es equivalente a la referencia, permitiendo rotaciones y deformaciones elásticas.
+      PASO 2: MAPEO DEL ALUMNO (Ignora color, grosor, fondo y sombras)
+      - Reduce el nudo a su "esqueleto" matemático.
+      - Identifica los cruces y el patrón "OVER/UNDER" en la imagen del alumno.
+      - Analiza la imagen original y la rotada para resolver oclusiones o dudas de perspectiva.
 
-      FORMATO DE RESPUESTA (JSON estricto):
+      PASO 3: COMPARACIÓN DE ESTRUCTURAS
+      - No compares la estética. Compara si el recorrido de la cuerda describe el mismo grafo.
+      - CASO RIZO/LLANO: Verifica que los dos cabos de cada lado salgan PARALELOS y por el MISMO LADO del bucle. Si salen cruzados, es un error estructural (nudo de vaca).
+
+      ### FORMATO DE RESPUESTA (JSON) ###
       {
-        "analisis_recorrido": "Descripción detallada del recorrido de la cuerda paso a paso.",
-        "verificacion_tecnica": "Confirmación de salidas paralelas y estructura de bucles.",
+        "grafo_referencia": "Descripción técnica de cruces y bucles del modelo.",
+        "grafo_alumno": "Descripción técnica de cruces y bucles detectados en la foto.",
+        "razonamiento_isomorfismo": "Explicación de por qué la estructura de entrelazado coincide o falla.",
         "isCorrect": boolean,
-        "feedback": "Si es correcto: '¡Excelente! Has realizado el nudo correctamente, respetando la estructura técnica.' Si es incorrecto: Explica el fallo estructural específico basado en el recorrido de la cuerda."
+        "feedback": "Si es correcto: '¡Excelente! Estructura topológica validada.' Si es incorrecto: Indica el cruce específico que falla (ej: 'El cabo derecho debería pasar por debajo del bucle central')."
       }` }
     ];
 
@@ -177,10 +185,11 @@ export async function validateImageAnswer(
       try {
         const ai = getAI();
         response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: "gemini-3.1-pro-preview",
           contents: [{ parts }],
           config: {
-            responseMimeType: "application/json"
+            responseMimeType: "application/json",
+            thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
           }
         });
         break;
