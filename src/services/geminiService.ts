@@ -121,35 +121,35 @@ export async function validateImageAnswer(
 
       CONTEXTO: "${questionText}"
 
-      ### PROTOCOLO DE ANÁLISIS TOPOLÓGICO (IGNORAR ESTÉTICA) ###
+      ### PROTOCOLO DE ANÁLISIS PASO A PASO (CHAIN OF THOUGHT) ###
 
-      1. ABSTRACCIÓN DEL MATERIAL:
-         - Ignora por completo el color, grosor, textura, material de la cuerda o el fondo.
+      1. IDENTIFICACIÓN DEL RECORRIDO:
+         - Analiza la imagen paso a paso antes de emitir un juicio.
+         - Identifica el recorrido del cabo: observa detalladamente cómo entra y sale de cada cruce.
+         - Ignora por completo el color, grosor, textura de la cuerda o el ángulo de la foto. No te dejes engañar por la torsión o si la silueta general parece una forma conocida (como un número).
+
+      2. VERIFICACIÓN TÉCNICA CRÍTICA:
+         - Para nudos como el RIZO/LLANO: Observa si los dos extremos (el chicote y el firme) de cada lado salen PARALELOS y por el MISMO LADO del bucle que los envuelve.
+         - Si los cabos salen juntos y paralelos, confirma la validez. Si salen cruzados o en direcciones opuestas, es un error estructural.
+
+      3. ABSTRACCIÓN TOPOLÓGICA:
          - Reduce el nudo a su "esqueleto" (línea central que describe el recorrido).
-
-      2. ANÁLISIS DE CRUCES (EL NÚCLEO DEL NUDO):
-         - Identifica el nudo central.
          - Mapea cada cruce: ¿Qué parte pasa por ARRIBA y cuál por ABAJO?
          - El nudo es correcto SI Y SOLO SI el patrón de cruces (over/under) y la conectividad de los cabos coinciden con la referencia.
 
-      3. CASO ESPECÍFICO: NUDO DE RIZO / LLANO:
-         - Asegúrate de que los dos cabos de un lado salgan por el mismo lado del bucle (paralelos). Si salen cruzados, es un "nudo de vaca" (incorrecto).
-         - Verifica que la estructura sea simétrica topológicamente.
-
       4. INVARIANZA ESPACIAL:
-         - El nudo es el mismo aunque esté rotado, estirado, apretado o aflojado (siempre que no se cambien los cruces).
-         - Analiza las dos versiones de la imagen del alumno (original y rotada 180°) para confirmar la estructura.
+         - El nudo es el mismo aunque esté rotado, estirado, apretado o aflojado. Analiza las dos versiones de la imagen (original y rotada 180°) para confirmar la estructura.
 
       ### CRITERIOS DE EVALUACIÓN ###
-      - CORRECTO (isCorrect: true): La topología (recorrido y cruces) coincide exactamente con el modelo, sin importar que la cuerda sea distinta o la foto esté en otro ángulo.
-      - INCORRECTO (isCorrect: false): Los cruces son distintos, falta un paso de cuerda, o el nudo es de un tipo diferente al solicitado.
+      - CORRECTO (isCorrect: true): La topología (recorrido y cruces) coincide exactamente con el modelo.
+      - INCORRECTO (isCorrect: false): Los cruces son distintos, la estructura técnica falla (ej: cabos no paralelos en rizo), o es un nudo diferente.
 
       FORMATO DE RESPUESTA (JSON estricto):
       {
-        "analisis_topologico": "Descripción detallada del recorrido de la cuerda y los cruces detectados.",
-        "comparacion_referencia": "Explicación de por qué el recorrido coincide o difiere del modelo.",
+        "pasos_analisis": ["Paso 1: Observación de...", "Paso 2: Análisis de cruces...", "Paso 3: Verificación de salidas..."],
+        "analisis_topologico": "Descripción técnica detallada del recorrido detectado.",
         "isCorrect": boolean,
-        "feedback": "Si es correcto: '¡Excelente! Has realizado el nudo correctamente, respetando la estructura topológica.' Si es incorrecto: Explica exactamente qué cruce o paso de cuerda está mal (ej: 'El cabo derecho debería pasar por debajo del bucle, no por encima')."
+        "feedback": "Si es correcto: '¡Excelente! Has realizado el nudo correctamente, respetando la estructura topológica.' Si es incorrecto: Explica exactamente qué cruce o paso de cuerda está mal (ej: 'El cabo derecho debería salir paralelo al firme, pero sale cruzado')."
       }` }
     ];
 
