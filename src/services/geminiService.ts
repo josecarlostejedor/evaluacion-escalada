@@ -14,10 +14,9 @@ function getAI(): GoogleGenAI {
 }
 
 /**
- * Resizes an image to a maximum dimension while maintaining aspect ratio.
- * This helps avoid "INVALID_ARGUMENT" errors from Gemini due to large image sizes.
+ * Preprocesa la imagen para eliminar distractores y enfocarse en la estructura
  */
-async function resizeImage(base64Str: string, maxDimension: number = 1024): Promise<string> {
+async function preprocessImage(base64Str: string, maxDimension: number = 800): Promise<string> {
   if (typeof window === 'undefined' || typeof Image === 'undefined') {
     return base64Str;
   }
@@ -44,13 +43,22 @@ async function resizeImage(base64Str: string, maxDimension: number = 1024): Prom
       canvas.height = height;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        // Enhance contrast and sharpness to help AI see rope edges and crossings
-        ctx.filter = 'contrast(1.3) brightness(1.05) saturate(1.1)';
         ctx.drawImage(img, 0, 0, width, height);
+        
+        // Convertir a escala de grises para eliminar distracciones de color
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          const gray = 0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2];
+          data[i] = gray;      // R
+          data[i + 1] = gray;  // G
+          data[i + 2] = gray;  // B
+        }
+        ctx.putImageData(imageData, 0, 0);
       }
-      resolve(canvas.toDataURL('image/jpeg', 0.92)); // High quality for detail
+      resolve(canvas.toDataURL('image/jpeg', 0.9));
     };
-    img.onerror = () => resolve(base64Str); // Fallback to original if error
+    img.onerror = () => resolve(base64Str);
     img.src = base64Str;
   });
 }
@@ -64,46 +72,17 @@ function getMimeTypeAndData(base64Str: string): { mimeType: string; data: string
   return { mimeType: "image/jpeg", data: base64Str };
 }
 
-/**
- * Rotates an image 180 degrees.
- */
-async function rotateImage180(base64Str: string): Promise<string> {
-  if (typeof window === 'undefined' || typeof Image === 'undefined') {
-    return base64Str;
-  }
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.translate(img.width / 2, img.height / 2);
-        ctx.rotate(Math.PI);
-        ctx.drawImage(img, -img.width / 2, -img.height / 2);
-      }
-      resolve(canvas.toDataURL('image/jpeg', 0.95));
-    };
-    img.onerror = () => resolve(base64Str);
-    img.src = base64Str;
-  });
-}
-
 export async function validateImageAnswer(
   studentImageBase64: string,
   referenceImageUrl: string | undefined,
   questionText: string
 ): Promise<{ isCorrect: boolean; feedback: string }> {
   try {
-    // Resize student image to avoid size limits
-    const resizedStudentImage = await resizeImage(studentImageBase64);
-    const rotatedStudentImage = await rotateImage180(resizedStudentImage);
-    
-    const studentInfo = getMimeTypeAndData(resizedStudentImage);
-    const rotatedInfo = getMimeTypeAndData(rotatedStudentImage);
+    // Preprocesamiento: escala de grises y redimensionado
+    const processedStudentImage = await preprocessImage(studentImageBase64);
+    const studentInfo = getMimeTypeAndData(processedStudentImage);
 
-    // Fetch reference image and convert to base64
+    // Obtener imagen de referencia
     let refInfo: { mimeType: string; data: string } | null = null;
     
     if (referenceImageUrl) {
@@ -112,47 +91,39 @@ export async function validateImageAnswer(
         if (!refResponse.ok) throw new Error("Failed to fetch reference image");
         const refBlob = await refResponse.blob();
         const refBase64 = await blobToBase64(refBlob);
-        // Also resize reference image just in case
-        const resizedRef = await resizeImage(refBase64);
-        refInfo = getMimeTypeAndData(resizedRef);
+        const processedRef = await preprocessImage(refBase64);
+        refInfo = getMimeTypeAndData(processedRef);
       } catch (e) {
         console.warn("Could not fetch reference image, validating without it:", e);
       }
     }
 
-    const parts: any[] = [
-      { text: `Eres un experto mundial en TOPOLOGÍA MATEMÁTICA de nudos y teoría de grafos. Tu misión es determinar si el nudo del alumno es ESTRUCTURALMENTE IDÉNTICO al de referencia mediante un análisis de isomorfismo de grafos.
+    const prompt = `
+Necesito que compares estos dos nudos y determines si son el MISMO tipo de nudo.
 
-      CONTEXTO: "${questionText}"
+🎯 **INSTRUCCIONES IMPORTANTES:**
+- Ignora COMPLETAMENTE el color de la cuerda, el fondo, la iluminación y el grosor.
+- Concéntrate SOLO en cómo se cruza la cuerda consigo misma.
+- Si el nudo está girado o visto desde otro ángulo, considera que puede ser el mismo.
 
-      ### PROTOCOLO DE EXTRACCIÓN TOPOLÓGICA (OBLIGATORIO) ###
-      
-      PASO 1: MAPEO DE LA REFERENCIA
-      - Identifica cada punto de cruce.
-      - Determina el patrón "OVER/UNDER" (qué segmento pisa a cuál).
-      - Mapea la conectividad de los extremos (chicotes y firmes).
+🔍 **¿QUÉ DEBES ANALIZAR?**
+1. ¿Cuántos cruces tiene el nudo? (puntos donde la cuerda se cruza)
+2. En cada cruce: ¿qué parte pasa por encima y cuál por debajo?
+3. ¿Cómo entran y salen los cabos de la cuerda?
 
-      PASO 2: MAPEO DEL ALUMNO (Ignora color, grosor, fondo y sombras)
-      - Reduce el nudo a su "esqueleto" matemático.
-      - Identifica los cruces y el patrón "OVER/UNDER" en la imagen del alumno.
-      - Analiza la imagen original y la rotada para resolver oclusiones o dudas de perspectiva.
+📝 **RESPONDE EN ESTE FORMATO JSON:**
+{
+  "esCorrecto": true/false,
+  "explicacion": "Explica brevemente si son iguales o diferentes, y por qué"
+}
 
-      PASO 3: COMPARACIÓN DE ESTRUCTURAS
-      - No compares la estética. Compara si el recorrido de la cuerda describe el mismo grafo.
-      - CASO RIZO/LLANO: Verifica que los dos cabos de cada lado salgan PARALELOS y por el MISMO LADO del bucle. Si salen cruzados, es un error estructural (nudo de vaca).
+Contexto de la pregunta: "${questionText}"
+`;
 
-      ### FORMATO DE RESPUESTA (JSON) ###
-      {
-        "grafo_referencia": "Descripción técnica de cruces y bucles del modelo.",
-        "grafo_alumno": "Descripción técnica de cruces y bucles detectados en la foto.",
-        "razonamiento_isomorfismo": "Explicación de por qué la estructura de entrelazado coincide o falla.",
-        "isCorrect": boolean,
-        "feedback": "Si es correcto: '¡Excelente! Estructura topológica validada.' Si es incorrecto: Indica el cruce específico que falla (ej: 'El cabo derecho debería pasar por debajo del bucle central')."
-      }` }
-    ];
+    const parts: any[] = [{ text: prompt }];
 
     if (refInfo) {
-      parts.push({ text: "IMAGEN DE REFERENCIA (MODELO A SEGUIR):" });
+      parts.push({ text: "NUDO DE REFERENCIA (el correcto):" });
       parts.push({
         inlineData: {
           mimeType: refInfo.mimeType,
@@ -161,19 +132,11 @@ export async function validateImageAnswer(
       });
     }
 
-    parts.push({ text: "IMAGEN DEL ALUMNO (ORIENTACIÓN ORIGINAL):" });
+    parts.push({ text: "NUDO DEL ALUMNO (a evaluar):" });
     parts.push({
       inlineData: {
         mimeType: studentInfo.mimeType,
         data: studentInfo.data
-      }
-    });
-
-    parts.push({ text: "IMAGEN DEL ALUMNO (ROTADA 180° PARA DOBLE VERIFICACIÓN):" });
-    parts.push({
-      inlineData: {
-        mimeType: rotatedInfo.mimeType,
-        data: rotatedInfo.data
       }
     });
 
@@ -189,7 +152,7 @@ export async function validateImageAnswer(
           contents: [{ parts }],
           config: {
             responseMimeType: "application/json",
-            thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
+            temperature: 0.1
           }
         });
         break;
@@ -212,20 +175,18 @@ export async function validateImageAnswer(
     let result;
     try {
       result = JSON.parse(cleanText);
+      return {
+        isCorrect: result.esCorrecto === true,
+        feedback: result.explicacion || (result.esCorrecto ? "¡Correcto!" : "Incorrecto")
+      };
     } catch (e) {
       console.error("JSON parse error:", e, "Raw text:", text);
-      // Fallback if JSON parsing fails but we have a clear indication of correctness
-      const isCorrect = text.toLowerCase().includes('"iscorrect": true') || text.toLowerCase().includes('"iscorrect":true');
+      const isCorrect = text.toLowerCase().includes('"escorrecto": true') || text.toLowerCase().includes('"escorrecto":true');
       return {
         isCorrect,
         feedback: isCorrect ? "¡Excelente! Nudo validado correctamente." : "El nudo no parece correcto. Revisa el recorrido de la cuerda."
       };
     }
-    
-    return {
-      isCorrect: !!result.isCorrect,
-      feedback: result.feedback || (result.isCorrect ? "Correcto" : "Incorrecto")
-    };
   } catch (error: any) {
     console.error("Error validating image:", error);
     
