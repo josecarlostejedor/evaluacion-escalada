@@ -14,7 +14,8 @@ function getAI(): GoogleGenAI {
 }
 
 /**
- * Preprocesa la imagen para eliminar distractores y enfocarse en la estructura
+ * Preprocesa la imagen aplicando filtros de detección de bordes y binarización.
+ * Esto imita la "Skeletonization" de OpenCV, dejando solo la estructura (líneas blancas sobre negro).
  */
 async function preprocessImage(base64Str: string, maxDimension: number = 800): Promise<string> {
   if (typeof window === 'undefined' || typeof Image === 'undefined') {
@@ -45,18 +46,42 @@ async function preprocessImage(base64Str: string, maxDimension: number = 800): P
       if (ctx) {
         ctx.drawImage(img, 0, 0, width, height);
         
-        // Convertir a escala de grises para eliminar distracciones de color
         const imageData = ctx.getImageData(0, 0, width, height);
         const data = imageData.data;
+        const grayscale = new Uint8Array(width * height);
+
+        // 1. Convertir a escala de grises
         for (let i = 0; i < data.length; i += 4) {
-          const gray = 0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2];
-          data[i] = gray;      // R
-          data[i + 1] = gray;  // G
-          data[i + 2] = gray;  // B
+          grayscale[i / 4] = 0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2];
+        }
+
+        // 2. Detección de bordes simple (Laplacian) + Umbralización (Threshold)
+        // Esto crea el efecto de "esqueleto" blanco sobre negro
+        for (let y = 1; y < height - 1; y++) {
+          for (let x = 1; x < width - 1; x++) {
+            const idx = y * width + x;
+            const center = grayscale[idx];
+            const up = grayscale[idx - width];
+            const down = grayscale[idx + width];
+            const left = grayscale[idx - 1];
+            const right = grayscale[idx + 1];
+
+            // Algoritmo de realce de bordes
+            const edge = Math.abs(4 * center - up - down - left - right);
+            
+            // Binarización: si es borde o es muy brillante, es "cuerda" (blanco), si no, fondo (negro)
+            const val = (edge > 25 || center > 180) ? 255 : 0;
+            
+            const pixelIdx = idx * 4;
+            data[pixelIdx] = val;
+            data[pixelIdx + 1] = val;
+            data[pixelIdx + 2] = val;
+            data[pixelIdx + 3] = 255;
+          }
         }
         ctx.putImageData(imageData, 0, 0);
       }
-      resolve(canvas.toDataURL('image/jpeg', 0.9));
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
     };
     img.onerror = () => resolve(base64Str);
     img.src = base64Str;
@@ -97,9 +122,10 @@ export async function validateImageAnswer(
     }
 
     const prompt = `
-Eres un analizador técnico de nudos. Tu misión es extraer la ESTRUCTURA de los nudos presentados.
-IGNORA: Color, grosor, fondo, iluminación y sombras.
-CÉNTRATE EN: Cruces (quién pisa a quién), bucles y dirección de los cabos.
+Eres un analizador técnico de nudos especializado en TOPOLOGÍA. 
+La imagen presentada es un MAPA TOPOLÓGICO (esqueleto) procesado: líneas blancas sobre fondo negro.
+IGNORA: Cualquier resto de textura o brillo.
+CÉNTRATE EN: El recorrido de las líneas blancas, sus cruces y bucles.
 
 Responde ÚNICAMENTE en este formato JSON:
 {
@@ -115,7 +141,7 @@ Responde ÚNICAMENTE en este formato JSON:
     "cabos_paralelos": (true/false),
     "tipo": "nombre detectado"
   },
-  "analisis_diferencial": "explicación de diferencias estructurales si las hay"
+  "analisis_diferencial": "explicación de diferencias estructurales en el recorrido de las líneas"
 }
 
 Contexto: "${questionText}"
