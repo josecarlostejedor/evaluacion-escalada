@@ -117,39 +117,43 @@ export async function validateImageAnswer(
     }
 
     const parts: any[] = [
-      { text: `Eres un experto mundial en topología de nudos y visión artificial avanzada. Tu única tarea es determinar si el nudo en la imagen del alumno es ESTRUCTURALMENTE IDÉNTICO al nudo de referencia, basándote exclusivamente en el recorrido de la cuerda (topología).
+      { text: `Eres un experto mundial en topología de nudos y visión artificial avanzada. Tu misión es comparar la imagen del alumno con la imagen de referencia y determinar si representan el MISMO TIPO DE NUDO basándote EXCLUSIVAMENTE en la estructura topológica (recorrido y entrelazado).
 
-      CONTEXTO: "${questionText}"
+      CONTEXTO DE LA TAREA: "${questionText}"
 
-      ### PROTOCOLO DE ANÁLISIS PASO A PASO (CHAIN OF THOUGHT) ###
+      ### REGLA DE ORO: IGNORAR ATRIBUTOS SUPERFICIALES ###
+      - Ignora por completo: color de la cuerda, grosor, textura, material, fondo, iluminación, sombras, escala y ángulo de la foto.
+      - NO digas cosas como "la cuerda es roja" o "el nudo es pequeño". Céntrate únicamente en la geometría del entrelazado.
 
-      1. IDENTIFICACIÓN DEL RECORRIDO:
-         - Analiza la imagen paso a paso antes de emitir un juicio.
-         - Identifica el recorrido del cabo: observa detalladamente cómo entra y sale de cada cruce.
-         - Ignora por completo el color, grosor, textura de la cuerda o el ángulo de la foto. No te dejes engañar por la torsión o si la silueta general parece una forma conocida (como un número).
+      ### PROTOCOLO DE ANÁLISIS TOPOLÓGICO (PASO A PASO) ###
 
-      2. VERIFICACIÓN TÉCNICA CRÍTICA:
-         - Para nudos como el RIZO/LLANO: Observa si los dos extremos (el chicote y el firme) de cada lado salen PARALELOS y por el MISMO LADO del bucle que los envuelve.
-         - Si los cabos salen juntos y paralelos, confirma la validez. Si salen cruzados o en direcciones opuestas, es un error estructural.
+      PASO 1: DESCRIPCIÓN ESTRUCTURAL DE LA REFERENCIA
+      - Identifica el número de cruces.
+      - En cada cruce, indica qué segmento pasa por encima y cuál por debajo.
+      - Identifica bucles y la dirección de entrada/salida de los cabos.
 
-      3. ABSTRACCIÓN TOPOLÓGICA:
-         - Reduce el nudo a su "esqueleto" (línea central que describe el recorrido).
-         - Mapea cada cruce: ¿Qué parte pasa por ARRIBA y cuál por ABAJO?
-         - El nudo es correcto SI Y SOLO SI el patrón de cruces (over/under) y la conectividad de los cabos coinciden con la referencia.
+      PASO 2: DESCRIPCIÓN ESTRUCTURAL DEL ALUMNO (Analiza tanto la versión original como la rotada 180°)
+      - Realiza el mismo análisis detallado: cruces (over/under), bucles y trayectoria de la cuerda.
+      - Busca el "esqueleto" del nudo (la línea central del recorrido).
 
-      4. INVARIANZA ESPACIAL:
-         - El nudo es el mismo aunque esté rotado, estirado, apretado o aflojado. Analiza las dos versiones de la imagen (original y rotada 180°) para confirmar la estructura.
+      PASO 3: VERIFICACIÓN TÉCNICA ESPECÍFICA (CASO RIZO/LLANO)
+      - Si el nudo solicitado es un Rizo (Square Knot): Verifica que los dos extremos (chicote y firme) de cada lado salgan PARALELOS y por el MISMO LADO del bucle que los envuelve. Si salen cruzados, es un error estructural (nudo de vaca).
 
-      ### CRITERIOS DE EVALUACIÓN ###
-      - CORRECTO (isCorrect: true): La topología (recorrido y cruces) coincide exactamente con el modelo.
-      - INCORRECTO (isCorrect: false): Los cruces son distintos, la estructura técnica falla (ej: cabos no paralelos en rizo), o es un nudo diferente.
+      PASO 4: COMPARACIÓN DE INVARIANTES
+      - Compara las descripciones de los pasos 1 y 2.
+      - El nudo es el mismo si la disposición de cruces y bucles es equivalente, incluso si está rotado o deformado elásticamente.
 
-      FORMATO DE RESPUESTA (JSON estricto):
+      ### FORMATO DE RESPUESTA (JSON ESTRICTO) ###
       {
-        "pasos_analisis": ["Paso 1: Observación de...", "Paso 2: Análisis de cruces...", "Paso 3: Verificación de salidas..."],
-        "analisis_topologico": "Descripción técnica detallada del recorrido detectado.",
+        "analisis_referencia": "Descripción topológica del modelo.",
+        "analisis_alumno": "Descripción topológica de la foto del alumno.",
+        "checklist": {
+          "num_cruces_coincide": boolean,
+          "patron_over_under_coincide": boolean,
+          "salidas_cabos_correctas": boolean
+        },
         "isCorrect": boolean,
-        "feedback": "Si es correcto: '¡Excelente! Has realizado el nudo correctamente, respetando la estructura topológica.' Si es incorrecto: Explica exactamente qué cruce o paso de cuerda está mal (ej: 'El cabo derecho debería salir paralelo al firme, pero sale cruzado')."
+        "feedback": "Si es correcto: '¡Excelente! Has realizado el nudo correctamente.' Si es incorrecto: Explica el fallo estructural específico (ej: 'El cabo derecho pasa por encima cuando debería ir por debajo')."
       }` }
     ];
 
