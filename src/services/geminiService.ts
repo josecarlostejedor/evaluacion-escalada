@@ -78,115 +78,98 @@ export async function validateImageAnswer(
   questionText: string
 ): Promise<{ isCorrect: boolean; feedback: string }> {
   try {
-    // Preprocesamiento: escala de grises y redimensionado
     const processedStudentImage = await preprocessImage(studentImageBase64);
     const studentInfo = getMimeTypeAndData(processedStudentImage);
 
-    // Obtener imagen de referencia
-    let refInfo: { mimeType: string; data: string } | null = null;
-    
-    if (referenceImageUrl) {
-      try {
-        const refResponse = await fetch(referenceImageUrl, { mode: 'cors' });
-        if (!refResponse.ok) throw new Error("Failed to fetch reference image");
-        const refBlob = await refResponse.blob();
-        const refBase64 = await blobToBase64(refBlob);
-        const processedRef = await preprocessImage(refBase64);
-        refInfo = getMimeTypeAndData(processedRef);
-      } catch (e) {
-        console.warn("Could not fetch reference image, validating without it:", e);
-      }
-    }
+    // Identificar el tipo de nudo por el texto de la pregunta
+    const isRizo = questionText.toLowerCase().includes("rizo") || questionText.toLowerCase().includes("llano");
+    const isOcho = questionText.toLowerCase().includes("ocho");
 
     const prompt = `
-Necesito que compares estos dos nudos y determines si son el MISMO tipo de nudo.
+Analiza este nudo y genera un INFORME TÉCNICO DE ESTRUCTURA. 
+Ignora color, fondo y grosor. Céntrate solo en el recorrido de la cuerda.
 
-🎯 **INSTRUCCIONES IMPORTANTES:**
-- Ignora COMPLETAMENTE el color de la cuerda, el fondo, la iluminación y el grosor.
-- Concéntrate SOLO en cómo se cruza la cuerda consigo misma.
-- Si el nudo está girado o visto desde otro ángulo, considera que puede ser el mismo.
-
-🔍 **¿QUÉ DEBES ANALIZAR?**
-1. ¿Cuántos cruces tiene el nudo? (puntos donde la cuerda se cruza)
-2. En cada cruce: ¿qué parte pasa por encima y cuál por debajo?
-3. ¿Cómo entran y salen los cabos de la cuerda?
-
-📝 **RESPONDE EN ESTE FORMATO JSON:**
+Responde ÚNICAMENTE en este formato JSON:
 {
-  "esCorrecto": true/false,
-  "explicacion": "Explica brevemente si son iguales o diferentes, y por qué"
+  "num_cruces": (número total de veces que la cuerda pasa sobre sí misma),
+  "cabos_paralelos": (true/false, ¿los dos extremos de cada lado salen juntos y paralelos?),
+  "forma_general": "descripción breve del recorrido",
+  "fallo_detectado": "si ves algo estructuralmente raro, descríbelo"
 }
 
-Contexto de la pregunta: "${questionText}"
+Contexto: "${questionText}"
 `;
 
-    const parts: any[] = [{ text: prompt }];
-
-    if (refInfo) {
-      parts.push({ text: "NUDO DE REFERENCIA (el correcto):" });
-      parts.push({
+    const parts: any[] = [
+      { text: prompt },
+      { text: "IMAGEN DEL ALUMNO A ANALIZAR:" },
+      {
         inlineData: {
-          mimeType: refInfo.mimeType,
-          data: refInfo.data
+          mimeType: studentInfo.mimeType,
+          data: studentInfo.data
         }
-      });
-    }
+      }
+    ];
 
-    parts.push({ text: "NUDO DEL ALUMNO (a evaluar):" });
-    parts.push({
-      inlineData: {
-        mimeType: studentInfo.mimeType,
-        data: studentInfo.data
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: [{ parts }],
+      config: {
+        responseMimeType: "application/json",
+        temperature: 0.1 // Mínima creatividad, máxima precisión
       }
     });
 
-    let response;
-    let retries = 0;
-    const maxRetries = 2;
+    const text = response?.text;
+    if (!text) throw new Error("Respuesta vacía");
+
+    const cleanText = text.replace(/```json\n?|```/g, "").trim();
+    const report = JSON.parse(cleanText);
+
+    // --- LÓGICA DE DECISIÓN (EL CÓDIGO DECIDE, NO LA IA) ---
     
-    while (retries <= maxRetries) {
-      try {
-        const ai = getAI();
-        response = await ai.models.generateContent({
-          model: "gemini-3.1-pro-preview",
-          contents: [{ parts }],
-          config: {
-            responseMimeType: "application/json",
-            temperature: 0.1
-          }
-        });
-        break;
-      } catch (err: any) {
-        const isQuotaError = err.message?.includes("429") || err.message?.includes("quota") || err.message?.includes("RESOURCE_EXHAUSTED");
-        if (isQuotaError && retries < maxRetries) {
-          retries++;
-          await new Promise(resolve => setTimeout(resolve, 2000 * retries));
-          continue;
-        }
-        throw err;
+    if (isRizo) {
+      // Un nudo de rizo correcto DEBE tener cabos paralelos. 
+      // Si salen cruzados (nudo de vaca), cabos_paralelos será false.
+      if (report.cabos_paralelos === true && report.num_cruces >= 2) {
+        return {
+          isCorrect: true,
+          feedback: "¡Excelente! Has realizado el nudo de rizo correctamente. Los cabos salen paralelos como debe ser."
+        };
+      } else {
+        return {
+          isCorrect: false,
+          feedback: report.cabos_paralelos === false 
+            ? "El nudo parece un 'nudo de vaca'. Los cabos deben salir paralelos y por el mismo lado del bucle." 
+            : "Revisa el entrelazado central, no parece un nudo de rizo correcto."
+        };
       }
     }
 
-    const text = response?.text;
-    if (!text) throw new Error("Empty response from AI");
-    
-    // Clean potential markdown blocks and parse JSON
-    const cleanText = text.replace(/```json\n?|```/g, "").trim();
-    let result;
-    try {
-      result = JSON.parse(cleanText);
-      return {
-        isCorrect: result.esCorrecto === true,
-        feedback: result.explicacion || (result.esCorrecto ? "¡Correcto!" : "Incorrecto")
-      };
-    } catch (e) {
-      console.error("JSON parse error:", e, "Raw text:", text);
-      const isCorrect = text.toLowerCase().includes('"escorrecto": true') || text.toLowerCase().includes('"escorrecto":true');
-      return {
-        isCorrect,
-        feedback: isCorrect ? "¡Excelente! Nudo validado correctamente." : "El nudo no parece correcto. Revisa el recorrido de la cuerda."
-      };
+    if (isOcho) {
+      if (report.num_cruces >= 4) {
+        return {
+          isCorrect: true,
+          feedback: "¡Muy bien! El nudo en forma de ocho tiene la estructura de cruces correcta."
+        };
+      } else {
+        return {
+          isCorrect: false,
+          feedback: "Faltan cruces para que sea un nudo en ocho completo. Revisa el recorrido."
+        };
+      }
     }
+
+    // Fallback para otros nudos: confiar en la evaluación general de la IA si no tenemos regla específica
+    const looksCorrect = report.num_cruces > 0 && !report.fallo_detectado;
+    return {
+      isCorrect: looksCorrect,
+      feedback: looksCorrect 
+        ? "El nudo parece estar bien ejecutado." 
+        : `Se ha detectado un posible error: ${report.fallo_detectado || "Estructura incompleta"}`
+    };
+
   } catch (error: any) {
     console.error("Error validating image:", error);
     
