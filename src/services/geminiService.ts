@@ -14,10 +14,10 @@ function getAI(): GoogleGenAI {
 }
 
 /**
- * Preprocesa la imagen aplicando filtros de detección de bordes y binarización.
- * Esto imita la "Skeletonization" de OpenCV, dejando solo la estructura (líneas blancas sobre negro).
+ * Preprocesa la imagen para maximizar el contraste y el detalle de las sombras.
+ * Mantiene la escala de grises para que la IA pueda percibir la profundidad (over/under).
  */
-async function preprocessImage(base64Str: string, maxDimension: number = 800): Promise<string> {
+async function preprocessImage(base64Str: string, maxDimension: number = 1024): Promise<string> {
   if (typeof window === 'undefined' || typeof Image === 'undefined') {
     return base64Str;
   }
@@ -27,17 +27,9 @@ async function preprocessImage(base64Str: string, maxDimension: number = 800): P
       let width = img.width;
       let height = img.height;
 
-      if (width > height) {
-        if (width > maxDimension) {
-          height *= maxDimension / width;
-          width = maxDimension;
-        }
-      } else {
-        if (height > maxDimension) {
-          width *= maxDimension / height;
-          height = maxDimension;
-        }
-      }
+      const scale = Math.min(maxDimension / width, maxDimension / height, 1);
+      width *= scale;
+      height *= scale;
 
       const canvas = document.createElement('canvas');
       canvas.width = width;
@@ -48,40 +40,22 @@ async function preprocessImage(base64Str: string, maxDimension: number = 800): P
         
         const imageData = ctx.getImageData(0, 0, width, height);
         const data = imageData.data;
-        const grayscale = new Uint8Array(width * height);
 
-        // 1. Convertir a escala de grises
         for (let i = 0; i < data.length; i += 4) {
-          grayscale[i / 4] = 0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2];
-        }
+          // Grayscale con énfasis en contraste
+          const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          
+          // Aumentar contraste localmente para resaltar sombras de cruces
+          let contrast = (gray - 128) * 1.2 + 128;
+          contrast = Math.max(0, Math.min(255, contrast));
 
-        // 2. Detección de bordes simple (Laplacian) + Umbralización (Threshold)
-        // Esto crea el efecto de "esqueleto" blanco sobre negro
-        for (let y = 1; y < height - 1; y++) {
-          for (let x = 1; x < width - 1; x++) {
-            const idx = y * width + x;
-            const center = grayscale[idx];
-            const up = grayscale[idx - width];
-            const down = grayscale[idx + width];
-            const left = grayscale[idx - 1];
-            const right = grayscale[idx + 1];
-
-            // Algoritmo de realce de bordes
-            const edge = Math.abs(4 * center - up - down - left - right);
-            
-            // Binarización: si es borde o es muy brillante, es "cuerda" (blanco), si no, fondo (negro)
-            const val = (edge > 25 || center > 180) ? 255 : 0;
-            
-            const pixelIdx = idx * 4;
-            data[pixelIdx] = val;
-            data[pixelIdx + 1] = val;
-            data[pixelIdx + 2] = val;
-            data[pixelIdx + 3] = 255;
-          }
+          data[i] = contrast;
+          data[i + 1] = contrast;
+          data[i + 2] = contrast;
         }
         ctx.putImageData(imageData, 0, 0);
       }
-      resolve(canvas.toDataURL('image/jpeg', 0.85));
+      resolve(canvas.toDataURL('image/jpeg', 0.9));
     };
     img.onerror = () => resolve(base64Str);
     img.src = base64Str;
@@ -122,26 +96,22 @@ export async function validateImageAnswer(
     }
 
     const prompt = `
-Eres un analizador técnico de nudos especializado en TOPOLOGÍA. 
-La imagen presentada es un MAPA TOPOLÓGICO (esqueleto) procesado: líneas blancas sobre fondo negro.
-IGNORA: Cualquier resto de textura o brillo.
-CÉNTRATE EN: El recorrido de las líneas blancas, sus cruces y bucles.
+Eres un experto mundial en TOPOLOGÍA y TEORÍA DE NUDOS.
+Tu misión es realizar un análisis de profundidad y continuidad de la cuerda para validar su estructura.
+
+Sigue este protocolo de pensamiento:
+1. Identifica el nudo solicitado en el contexto.
+2. Traza mentalmente el recorrido de la cuerda en la imagen de referencia (si existe).
+3. Traza el recorrido en la imagen del alumno, identificando cada cruce y si la cuerda pasa POR ENCIMA o POR DEBAJO.
+4. Compara ambos recorridos.
 
 Responde ÚNICAMENTE en este formato JSON:
 {
-  "referencia": {
-    "num_cruces": (número),
-    "num_bucles": (número),
-    "cabos_paralelos": (true/false),
-    "tipo": "nombre del nudo"
-  },
-  "alumno": {
-    "num_cruces": (número),
-    "num_bucles": (número),
-    "cabos_paralelos": (true/false),
-    "tipo": "nombre detectado"
-  },
-  "analisis_diferencial": "explicación de diferencias estructurales en el recorrido de las líneas"
+  "analisis_paso_a_paso": "Describe el recorrido detectado (ej: entra por arriba, cruza sobre X, entra en bucle Y...)",
+  "estructura_correcta": (true/false),
+  "num_cruces_detectados": (número),
+  "fallo_especifico": "Si es incorrecto, describe exactamente qué cruce o dirección falla",
+  "feedback_pedagogico": "Un mensaje motivador y claro para el alumno"
 }
 
 Contexto: "${questionText}"
@@ -167,6 +137,7 @@ Contexto: "${questionText}"
       contents: [{ parts }],
       config: {
         responseMimeType: "application/json",
+        thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
         temperature: 0.1
       }
     });
@@ -177,38 +148,10 @@ Contexto: "${questionText}"
     const cleanText = text.replace(/```json\n?|```/g, "").trim();
     const result = JSON.parse(cleanText);
 
-    const ref = result.referencia;
-    const user = result.alumno;
-
-    // --- LÓGICA DE COMPARACIÓN HÍBRIDA (EL CÓDIGO DECIDE) ---
-    
-    // 1. Validación de Cruces (Tolerancia de +/- 0 para nudos simples)
-    const crucesMatch = user.num_cruces === ref.num_cruces;
-    
-    // 2. Validación de Bucles
-    const buclesMatch = user.num_bucles === ref.num_bucles;
-    
-    // 3. Validación de Cabos (Crítico para el Rizo/Llano)
-    const cabosMatch = user.cabos_paralelos === ref.cabos_paralelos;
-
-    // 4. Decisión Final
-    let isCorrect = crucesMatch && buclesMatch && cabosMatch;
-    let feedback = "";
-
-    if (isCorrect) {
-      feedback = `¡Excelente! Has replicado la estructura del ${ref.tipo} perfectamente.`;
-    } else {
-      if (!crucesMatch) {
-        feedback = `Estructura incorrecta: El nudo debería tener ${ref.num_cruces} cruces, pero hemos detectado ${user.num_cruces}. `;
-      } else if (!buclesMatch) {
-        feedback = `Fallo en los bucles: Se esperan ${ref.num_bucles} bucles y tu nudo tiene ${user.num_bucles}. `;
-      } else if (!cabosMatch) {
-        feedback = "Los cabos no salen en la dirección correcta (deben ser paralelos en este nudo). ";
-      }
-      feedback += result.analisis_diferencial || "Revisa el recorrido de la cuerda.";
-    }
-
-    return { isCorrect, feedback };
+    return { 
+      isCorrect: result.estructura_correcta === true, 
+      feedback: result.feedback_pedagogico || result.fallo_especifico || "Revisa el nudo."
+    };
 
   } catch (error: any) {
     console.error("Error validating image:", error);
