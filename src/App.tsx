@@ -51,6 +51,7 @@ export default function App() {
   const [feedback, setFeedback] = useState<{ isCorrect: boolean; message: string } | null>(null);
   const [attempts, setAttempts] = useState(0);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [loadingMessage, setLoadingMessage] = useState("Cargando...");
 
   useEffect(() => {
     const loadData = async () => {
@@ -196,13 +197,20 @@ export default function App() {
       date: new Date().toLocaleString()
     };
 
+    setLoadingMessage("Guardando resultados en Google Sheets...");
     setIsLoading(true);
-    await logToGoogleSheets(result);
-    setIsLoading(false);
-    setState('RESULTS');
+    try {
+      await logToGoogleSheets(result);
+    } catch (e) {
+      console.error("Error saving to sheets:", e);
+    } finally {
+      setIsLoading(false);
+      setState('RESULTS');
+    }
   };
 
   const downloadPDF = async () => {
+    setLoadingMessage("Generando Informe PDF...");
     setIsLoading(true);
     try {
       const pdf = new jsPDF('p', 'mm', 'a4');
@@ -457,7 +465,7 @@ export default function App() {
       {isLoading && (
         <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-[100] flex flex-col items-center justify-center">
           <Loader2 size={48} className="text-[#5A5A40] animate-spin mb-4" />
-          <p className="text-[#5A5A40] font-bold animate-pulse">Generando Informe PDF...</p>
+          <p className="text-[#5A5A40] font-bold animate-pulse">{loadingMessage}</p>
           <p className="text-xs opacity-60 mt-2">Por favor, espera un momento.</p>
         </div>
       )}
@@ -869,6 +877,13 @@ export default function App() {
             >
               <div className="bg-white rounded-[32px] p-12 shadow-2xl border border-black/5 text-center relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-2 bg-[#5A5A40]" />
+                
+                <div className="flex justify-center mb-6">
+                  <div className="bg-green-50 text-green-700 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 border border-green-100">
+                    <CheckCircle2 size={12} /> Sincronizado con Google Sheets
+                  </div>
+                </div>
+
                 <CheckCircle2 size={80} className="mx-auto mb-6 text-green-600" />
                 <h2 className="text-4xl font-light mb-2">Evaluación Completada</h2>
                 
