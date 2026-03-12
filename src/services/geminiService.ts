@@ -81,35 +81,59 @@ export async function validateImageAnswer(
     const processedStudentImage = await preprocessImage(studentImageBase64);
     const studentInfo = getMimeTypeAndData(processedStudentImage);
 
-    // Identificar el tipo de nudo por el texto de la pregunta
-    const isRizo = questionText.toLowerCase().includes("rizo") || questionText.toLowerCase().includes("llano");
-    const isOcho = questionText.toLowerCase().includes("ocho");
+    let refInfo: { mimeType: string; data: string } | null = null;
+    if (referenceImageUrl) {
+      try {
+        const refResponse = await fetch(referenceImageUrl, { mode: 'cors' });
+        if (refResponse.ok) {
+          const refBlob = await refResponse.blob();
+          const refBase64 = await blobToBase64(refBlob);
+          const processedRef = await preprocessImage(refBase64);
+          refInfo = getMimeTypeAndData(processedRef);
+        }
+      } catch (e) {
+        console.warn("No se pudo cargar la referencia, se validará por descripción técnica.");
+      }
+    }
 
     const prompt = `
-Analiza este nudo y genera un INFORME TÉCNICO DE ESTRUCTURA. 
-Ignora color, fondo y grosor. Céntrate solo en el recorrido de la cuerda.
+Eres un analizador técnico de nudos. Tu misión es extraer la ESTRUCTURA de los nudos presentados.
+IGNORA: Color, grosor, fondo, iluminación y sombras.
+CÉNTRATE EN: Cruces (quién pisa a quién), bucles y dirección de los cabos.
 
 Responde ÚNICAMENTE en este formato JSON:
 {
-  "num_cruces": (número total de veces que la cuerda pasa sobre sí misma),
-  "cabos_paralelos": (true/false, ¿los dos extremos de cada lado salen juntos y paralelos?),
-  "forma_general": "descripción breve del recorrido",
-  "fallo_detectado": "si ves algo estructuralmente raro, descríbelo"
+  "referencia": {
+    "num_cruces": (número),
+    "num_bucles": (número),
+    "cabos_paralelos": (true/false),
+    "tipo": "nombre del nudo"
+  },
+  "alumno": {
+    "num_cruces": (número),
+    "num_bucles": (número),
+    "cabos_paralelos": (true/false),
+    "tipo": "nombre detectado"
+  },
+  "analisis_diferencial": "explicación de diferencias estructurales si las hay"
 }
 
 Contexto: "${questionText}"
 `;
 
-    const parts: any[] = [
-      { text: prompt },
-      { text: "IMAGEN DEL ALUMNO A ANALIZAR:" },
-      {
-        inlineData: {
-          mimeType: studentInfo.mimeType,
-          data: studentInfo.data
-        }
-      }
-    ];
+    const parts: any[] = [{ text: prompt }];
+
+    if (refInfo) {
+      parts.push({ text: "IMAGEN DE REFERENCIA (MODELO):" });
+      parts.push({
+        inlineData: { mimeType: refInfo.mimeType, data: refInfo.data }
+      });
+    }
+
+    parts.push({ text: "IMAGEN DEL ALUMNO (A EVALUAR):" });
+    parts.push({
+      inlineData: { mimeType: studentInfo.mimeType, data: studentInfo.data }
+    });
 
     const ai = getAI();
     const response = await ai.models.generateContent({
@@ -117,7 +141,7 @@ Contexto: "${questionText}"
       contents: [{ parts }],
       config: {
         responseMimeType: "application/json",
-        temperature: 0.1 // Mínima creatividad, máxima precisión
+        temperature: 0.1
       }
     });
 
@@ -125,50 +149,40 @@ Contexto: "${questionText}"
     if (!text) throw new Error("Respuesta vacía");
 
     const cleanText = text.replace(/```json\n?|```/g, "").trim();
-    const report = JSON.parse(cleanText);
+    const result = JSON.parse(cleanText);
 
-    // --- LÓGICA DE DECISIÓN (EL CÓDIGO DECIDE, NO LA IA) ---
+    const ref = result.referencia;
+    const user = result.alumno;
+
+    // --- LÓGICA DE COMPARACIÓN HÍBRIDA (EL CÓDIGO DECIDE) ---
     
-    if (isRizo) {
-      // Un nudo de rizo correcto DEBE tener cabos paralelos. 
-      // Si salen cruzados (nudo de vaca), cabos_paralelos será false.
-      if (report.cabos_paralelos === true && report.num_cruces >= 2) {
-        return {
-          isCorrect: true,
-          feedback: "¡Excelente! Has realizado el nudo de rizo correctamente. Los cabos salen paralelos como debe ser."
-        };
-      } else {
-        return {
-          isCorrect: false,
-          feedback: report.cabos_paralelos === false 
-            ? "El nudo parece un 'nudo de vaca'. Los cabos deben salir paralelos y por el mismo lado del bucle." 
-            : "Revisa el entrelazado central, no parece un nudo de rizo correcto."
-        };
+    // 1. Validación de Cruces (Tolerancia de +/- 0 para nudos simples)
+    const crucesMatch = user.num_cruces === ref.num_cruces;
+    
+    // 2. Validación de Bucles
+    const buclesMatch = user.num_bucles === ref.num_bucles;
+    
+    // 3. Validación de Cabos (Crítico para el Rizo/Llano)
+    const cabosMatch = user.cabos_paralelos === ref.cabos_paralelos;
+
+    // 4. Decisión Final
+    let isCorrect = crucesMatch && buclesMatch && cabosMatch;
+    let feedback = "";
+
+    if (isCorrect) {
+      feedback = `¡Excelente! Has replicado la estructura del ${ref.tipo} perfectamente.`;
+    } else {
+      if (!crucesMatch) {
+        feedback = `Estructura incorrecta: El nudo debería tener ${ref.num_cruces} cruces, pero hemos detectado ${user.num_cruces}. `;
+      } else if (!buclesMatch) {
+        feedback = `Fallo en los bucles: Se esperan ${ref.num_bucles} bucles y tu nudo tiene ${user.num_bucles}. `;
+      } else if (!cabosMatch) {
+        feedback = "Los cabos no salen en la dirección correcta (deben ser paralelos en este nudo). ";
       }
+      feedback += result.analisis_diferencial || "Revisa el recorrido de la cuerda.";
     }
 
-    if (isOcho) {
-      if (report.num_cruces >= 4) {
-        return {
-          isCorrect: true,
-          feedback: "¡Muy bien! El nudo en forma de ocho tiene la estructura de cruces correcta."
-        };
-      } else {
-        return {
-          isCorrect: false,
-          feedback: "Faltan cruces para que sea un nudo en ocho completo. Revisa el recorrido."
-        };
-      }
-    }
-
-    // Fallback para otros nudos: confiar en la evaluación general de la IA si no tenemos regla específica
-    const looksCorrect = report.num_cruces > 0 && !report.fallo_detectado;
-    return {
-      isCorrect: looksCorrect,
-      feedback: looksCorrect 
-        ? "El nudo parece estar bien ejecutado." 
-        : `Se ha detectado un posible error: ${report.fallo_detectado || "Estructura incompleta"}`
-    };
+    return { isCorrect, feedback };
 
   } catch (error: any) {
     console.error("Error validating image:", error);
