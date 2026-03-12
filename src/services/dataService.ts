@@ -181,6 +181,23 @@ export async function logToGoogleSheets(result: EvaluationResult) {
   // Calculate score over 10
   const scoreOver10 = result.maxScore > 0 ? ((result.totalScore / result.maxScore) * 10).toFixed(2) : "0.00";
   
+  // Persist score in localStorage to calculate average across disciplines
+  const studentKey = `${result.student.firstName}_${result.student.lastName}_${result.student.course}_${result.student.group}`.replace(/\s+/g, '_').toLowerCase();
+  const storageKey = `eval_scores_${studentKey}`;
+  const savedScores = JSON.parse(localStorage.getItem(storageKey) || '{}');
+  
+  // Update saved scores
+  savedScores[result.discipline] = scoreOver10;
+  localStorage.setItem(storageKey, JSON.stringify(savedScores));
+
+  // Calculate average if both scores are present
+  let mediaFinal = '';
+  if (savedScores[Discipline.KNOTS] && savedScores[Discipline.CLIMBING]) {
+    const n1 = parseFloat(savedScores[Discipline.KNOTS]);
+    const n2 = parseFloat(savedScores[Discipline.CLIMBING]);
+    mediaFinal = ((n1 + n2) / 2).toFixed(2);
+  }
+
   // Count mistakes
   const mistakes = result.answers.filter(a => !a.isCorrect).length;
 
@@ -195,7 +212,8 @@ export async function logToGoogleSheets(result: EvaluationResult) {
     puntuacion_escalada: result.discipline === Discipline.CLIMBING ? scoreOver10 : '',
     fallos_escalada: result.discipline === Discipline.CLIMBING ? mistakes : '',
     fecha_cabuyeria: result.discipline === Discipline.KNOTS ? result.date : '',
-    fecha_escalada: result.discipline === Discipline.CLIMBING ? result.date : ''
+    fecha_escalada: result.discipline === Discipline.CLIMBING ? result.date : '',
+    nota_media: mediaFinal
   };
 
   try {
