@@ -14,68 +14,47 @@ function getAI(): GoogleGenAI {
 }
 
 /**
- * Calcula los Momentos de Hu de una imagen binaria.
- * Estos momentos son invariantes a rotación, escala y traslación.
- * Es la "huella dactilar" matemática de la forma del nudo.
+ * Detecta puntos clave (cruces y esquinas) en la imagen binaria.
+ * Implementa una versión simplificada de detección de esquinas para encontrar nodos del grafo.
  */
-function calculateHuMoments(data: Uint8ClampedArray, width: number, height: number): number[] {
-  let m00 = 0, m10 = 0, m01 = 0, m11 = 0, m20 = 0, m02 = 0, m21 = 0, m12 = 0, m30 = 0, m03 = 0;
+function detectKeypoints(data: Uint8ClampedArray, width: number, height: number): {x: number, y: number}[] {
+  const points: {x: number, y: number}[] = [];
+  const step = 10; // Sensibilidad de muestreo
 
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const val = data[(y * width + x) * 4] > 127 ? 1 : 0;
-      if (val === 0) continue;
-
-      m00 += val;
-      m10 += x * val;
-      m01 += y * val;
-      m11 += x * y * val;
-      m20 += x * x * val;
-      m02 += y * y * val;
-      m21 += x * x * y * val;
-      m12 += x * y * y * val;
-      m30 += x * x * x * val;
-      m03 += y * y * y * val;
+  for (let y = step; y < height - step; y += step) {
+    for (let x = step; x < width - step; x += step) {
+      const idx = (y * width + x) * 4;
+      if (data[idx] > 127) {
+        // Verificar si es un punto de interés (muchos vecinos blancos en área local)
+        let neighbors = 0;
+        for (let ky = -2; ky <= 2; ky++) {
+          for (let kx = -2; kx <= 2; kx++) {
+            if (data[((y + ky) * width + (x + kx)) * 4] > 127) neighbors++;
+          }
+        }
+        // Un cruce suele tener una densidad específica de píxeles
+        if (neighbors > 15 && neighbors < 22) {
+          points.push({x, y});
+        }
+      }
     }
   }
 
-  if (m00 === 0) return new Array(7).fill(0);
-
-  const x_c = m10 / m00;
-  const y_c = m01 / m00;
-
-  let mu20 = m20 - x_c * m10;
-  let mu02 = m02 - y_c * m01;
-  let mu11 = m11 - x_c * m01;
-  let mu30 = m30 - 3 * x_c * m20 + 2 * x_c * x_c * m10;
-  let mu03 = m03 - 3 * y_c * m02 + 2 * y_c * y_c * m01;
-  let mu21 = m21 - 2 * x_c * m11 - y_c * m20 + 2 * x_c * x_c * m01;
-  let mu12 = m12 - 2 * y_c * m11 - x_c * m02 + 2 * y_c * y_c * m10;
-
-  const invM00_2 = 1 / (m00 * m00);
-  const invM00_25 = 1 / Math.pow(m00, 2.5);
-
-  const n20 = mu20 * invM00_2;
-  const n02 = mu02 * invM00_2;
-  const n11 = mu11 * invM00_2;
-  const n30 = mu30 * invM00_25;
-  const n03 = mu03 * invM00_25;
-  const n21 = mu21 * invM00_25;
-  const n12 = mu12 * invM00_25;
-
-  const h1 = n20 + n02;
-  const h2 = Math.pow(n20 - n02, 2) + 4 * n11 * n11;
-  const h3 = Math.pow(n30 - 3 * n12, 2) + Math.pow(3 * n21 - n03, 2);
-  const h4 = Math.pow(n30 + n12, 2) + Math.pow(n21 + n03, 2);
-  
-  return [h1, h2, h3, h4]; // Devolvemos los 4 primeros por simplicidad y estabilidad
+  // Filtrar puntos redundantes (clústeres)
+  const filtered: {x: number, y: number}[] = [];
+  const minDist = 30;
+  for (const p of points) {
+    if (!filtered.some(f => Math.hypot(f.x - p.x, f.y - p.y) < minDist)) {
+      filtered.push(p);
+    }
+  }
+  return filtered;
 }
 
 /**
- * Preprocesamiento avanzado: Escala de grises -> Umbral Adaptativo -> Limpieza.
- * Devuelve tanto la imagen para la IA como los momentos matemáticos.
+ * Analiza la estructura del nudo usando Keypoints y Grafos.
  */
-async function analyzeImageStructure(base64Str: string): Promise<{ processedBase64: string, moments: number[] }> {
+async function analyzeGraphStructure(base64Str: string): Promise<{ processedBase64: string, graph: any }> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -91,33 +70,39 @@ async function analyzeImageStructure(base64Str: string): Promise<{ processedBase
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imageData.data;
       
-      // 1. Grayscale + Contrast
+      // 1. Binarización agresiva para silueta
       for (let i = 0; i < data.length; i += 4) {
         const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-        data[i] = data[i + 1] = data[i + 2] = gray;
+        const val = gray > 140 ? 255 : 0;
+        data[i] = data[i + 1] = data[i + 2] = val;
       }
 
-      // 2. Umbral Adaptativo Simple (Local Mean)
-      const thresholded = new Uint8ClampedArray(data.length);
-      const w = canvas.width;
-      const h = canvas.height;
-
-      for (let i = 0; i < w; i++) {
-        for (let j = 0; j < h; j++) {
-          const idx = (j * w + i) * 4;
-          // Simulamos umbral adaptativo comparando con media local
-          const val = data[idx] > 127 ? 255 : 0; 
-          thresholded[idx] = thresholded[idx+1] = thresholded[idx+2] = val;
-          thresholded[idx+3] = 255;
+      const keypoints = detectKeypoints(data, canvas.width, canvas.height);
+      
+      // 2. Construir Grafo (Conectividad)
+      let edges = 0;
+      const degrees = new Array(keypoints.length).fill(0);
+      for (let i = 0; i < keypoints.length; i++) {
+        for (let j = i + 1; j < keypoints.length; j++) {
+          const dist = Math.hypot(keypoints[i].x - keypoints[j].x, keypoints[i].y - keypoints[j].y);
+          if (dist < 100) { // Umbral de conexión
+            edges++;
+            degrees[i]++;
+            degrees[j]++;
+          }
         }
       }
 
-      const moments = calculateHuMoments(thresholded, w, h);
-      ctx.putImageData(new ImageData(thresholded, w, h), 0, 0);
+      ctx.putImageData(imageData, 0, 0);
       
       resolve({
         processedBase64: canvas.toDataURL('image/jpeg', 0.8),
-        moments
+        graph: {
+          nodes: keypoints.length,
+          edges: edges,
+          degree_distribution: degrees.sort((a, b) => b - a),
+          average_connectivity: edges / (keypoints.length || 1)
+        }
       });
     };
     img.src = base64Str;
@@ -130,7 +115,7 @@ export async function validateImageAnswer(
   questionText: string
 ): Promise<{ isCorrect: boolean; feedback: string }> {
   try {
-    const studentAnalysis = await analyzeImageStructure(studentImageBase64);
+    const studentAnalysis = await analyzeGraphStructure(studentImageBase64);
     
     let refAnalysis = null;
     if (referenceImageUrl) {
@@ -139,35 +124,36 @@ export async function validateImageAnswer(
         if (refResponse.ok) {
           const refBlob = await refResponse.blob();
           const refBase64 = await blobToBase64(refBlob);
-          refAnalysis = await analyzeImageStructure(refBase64);
+          refAnalysis = await analyzeGraphStructure(refBase64);
         }
       } catch (e) { console.warn(e); }
     }
 
     const prompt = `
-Eres un experto en visión artificial y nudos.
-He procesado las imágenes para extraer su "huella dactilar" matemática (Momentos de Hu).
+Eres un experto en TOPOLOGÍA DE GRAFOS aplicado a nudos (DexKnot 2026).
+He extraído el esqueleto matemático de los nudos.
 
-DATOS TÉCNICOS:
-${refAnalysis ? `REFERENCIA - Momentos: [${refAnalysis.moments.map(m => m.toFixed(6)).join(", ")}]` : "No hay datos de referencia."}
-ALUMNO - Momentos: [${studentAnalysis.moments.map(m => m.toFixed(6)).join(", ")}]
+DATOS DEL GRAFO:
+${refAnalysis ? `REFERENCIA: Nodos=${refAnalysis.graph.nodes}, Aristas=${refAnalysis.graph.edges}, Conectividad=${refAnalysis.graph.average_connectivity.toFixed(2)}` : ""}
+ALUMNO: Nodos=${studentAnalysis.graph.nodes}, Aristas=${studentAnalysis.graph.edges}, Conectividad=${studentAnalysis.graph.average_connectivity.toFixed(2)}
 
 INSTRUCCIONES:
-1. Compara los momentos. Si son similares (especialmente el primero), la forma es correcta.
-2. Mira la imagen procesada (binaria) para confirmar el recorrido.
-3. El nudo solicitado es: "${questionText}".
+1. Compara la complejidad de los grafos. Si el número de nodos (cruces) y conexiones es similar, la estructura es correcta.
+2. El nudo solicitado es: "${questionText}".
+3. Usa la imagen binaria para confirmar que el flujo de la cuerda es el esperado.
 
 Responde en JSON:
 {
-  "estructura_correcta": (true/false),
-  "confianza_matematica": (0-1),
-  "feedback": "mensaje para el alumno"
+  "is_isomorphic": (true/false),
+  "confianza_topologica": (0-1),
+  "analisis": "breve explicación técnica",
+  "feedback": "mensaje motivador para el alumno"
 }
 `;
 
     const parts: any[] = [
       { text: prompt },
-      { text: "IMAGEN PROCESADA DEL ALUMNO:" },
+      { text: "ESQUELETO DEL ALUMNO:" },
       { inlineData: { mimeType: "image/jpeg", data: studentAnalysis.processedBase64.split(',')[1] } }
     ];
 
@@ -185,13 +171,13 @@ Responde en JSON:
     const result = JSON.parse(response.text.replace(/```json\n?|```/g, "").trim());
 
     return { 
-      isCorrect: result.estructura_correcta, 
+      isCorrect: result.is_isomorphic, 
       feedback: result.feedback 
     };
 
   } catch (error: any) {
     console.error(error);
-    return { isCorrect: false, feedback: "Error al analizar la imagen. Intenta de nuevo." };
+    return { isCorrect: false, feedback: "Error en el análisis topológico. Intenta de nuevo." };
   }
 }
 
