@@ -304,6 +304,11 @@ export default function App() {
           displayValue = q.options?.[optIndex] || ans.value;
         }
 
+        // If it's an image, we don't want to print the base64 string as text
+        const textToPrint = q.type === QuestionType.IMAGE_UPLOAD 
+          ? (ans?.value ? "[Imagen adjunta]" : "Sin respuesta") 
+          : `"${displayValue}"`;
+
         // Set font before splitting to ensure accurate width calculation
         pdf.setFont("helvetica", "normal");
         pdf.setFontSize(11);
@@ -311,7 +316,7 @@ export default function App() {
         const qTextHeight = wrappedQText.length * 7;
         
         pdf.setFontSize(10);
-        const wrappedAnsText = pdf.splitTextToSize(`"${displayValue}"`, contentWidth - 20);
+        const wrappedAnsText = pdf.splitTextToSize(textToPrint, contentWidth - 20);
         const ansTextHeight = wrappedAnsText.length * 6;
         
         let boxHeight = ansTextHeight + 20;
