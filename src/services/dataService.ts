@@ -1,237 +1,211 @@
-import { GoogleGenAI } from "@google/genai";
+import * as XLSX from 'xlsx';
+import { Question, Discipline, QuestionType, EvaluationResult } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Default Excel URL (User should replace this with their GitHub Raw URL)
+const DEFAULT_EXCEL_URL = 'https://github.com/josecarlostejedor/evaluacion-escalada/blob/main/preguntasescalada.xlsx';
 
-/**
- * Resizes an image to a maximum dimension while maintaining aspect ratio.
- * This helps avoid "INVALID_ARGUMENT" errors from Gemini due to large image sizes.
- */
-async function resizeImage(base64Str: string, maxDimension: number = 1024): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      let width = img.width;
-      let height = img.height;
-
-      if (width > height) {
-        if (width > maxDimension) {
-          height *= maxDimension / width;
-          width = maxDimension;
-        }
-      } else {
-        if (height > maxDimension) {
-          width *= maxDimension / height;
-          height = maxDimension;
-        }
-      }
-
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx?.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/jpeg', 0.95)); // Increased quality for better rope detail
-    };
-    img.onerror = () => resolve(base64Str); // Fallback to original if error
-    img.src = base64Str;
-  });
-}
-
-function getMimeTypeAndData(base64Str: string): { mimeType: string; data: string } {
-  const match = base64Str.match(/^data:([^;]+);base64,(.+)$/);
-  if (match) {
-    return { mimeType: match[1], data: match[2] };
+// Helper to convert GitHub UI URLs to Raw URLs
+function getRawUrl(url: string): string {
+  if (!url) return url;
+  if (url.includes('github.com') && url.includes('/blob/')) {
+    return url
+      .replace('github.com', 'raw.githubusercontent.com')
+      .replace('/blob/', '/');
   }
-  // Fallback if it's just the data part
-  return { mimeType: "image/jpeg", data: base64Str };
+  return url;
 }
 
-/**
- * Rotates an image 180 degrees.
- */
-async function rotateImage180(base64Str: string): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.translate(img.width / 2, img.height / 2);
-        ctx.rotate(Math.PI);
-        ctx.drawImage(img, -img.width / 2, -img.height / 2);
-      }
-      resolve(canvas.toDataURL('image/jpeg', 0.95));
-    };
-    img.onerror = () => resolve(base64Str);
-    img.src = base64Str;
-  });
-}
-
-export async function validateImageAnswer(
-  studentImageBase64: string,
-  referenceImageUrl: string | undefined,
-  questionText: string
-): Promise<{ isCorrect: boolean; feedback: string }> {
+export async function fetchQuestions(excelUrl: string = DEFAULT_EXCEL_URL): Promise<Question[]> {
+  const finalUrl = getRawUrl(excelUrl);
   try {
-    // Resize student image to avoid size limits
-    const resizedStudentImage = await resizeImage(studentImageBase64);
-    const rotatedStudentImage = await rotateImage180(resizedStudentImage);
-    
-    const studentInfo = getMimeTypeAndData(resizedStudentImage);
-    const rotatedInfo = getMimeTypeAndData(rotatedStudentImage);
-
-    // Fetch reference image and convert to base64
-    let refInfo: { mimeType: string; data: string } | null = null;
-    
-    if (referenceImageUrl) {
-      try {
-        const refResponse = await fetch(referenceImageUrl, { mode: 'cors' });
-        if (!refResponse.ok) throw new Error("Failed to fetch reference image");
-        const refBlob = await refResponse.blob();
-        const refBase64 = await blobToBase64(refBlob);
-        // Also resize reference image just in case
-        const resizedRef = await resizeImage(refBase64);
-        refInfo = getMimeTypeAndData(resizedRef);
-      } catch (e) {
-        console.warn("Could not fetch reference image, validating without it:", e);
-      }
+    if (!finalUrl || finalUrl.includes('MY_APP_URL')) {
+      console.warn('Excel URL not configured. Using mock questions.');
+      return getMockQuestions();
     }
 
-    const parts: any[] = [
-      { text: `Eres un experto en análisis topológico de nudos y visión por computadora. Tu misión es validar si el nudo del alumno es estructuralmente idéntico al de referencia, ignorando estética y centrándote en la topología.
+    console.log('Fetching questions from:', finalUrl);
+    const response = await fetch(finalUrl);
+    if (!response.ok) {
+      throw new Error(`Error al descargar el archivo: ${response.status} ${response.statusText}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    
+    // Use header: 1 to get an array of arrays, which is more predictable for mapping
+    const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
 
-      PREGUNTA/TAREA: "${questionText}"
-
-      ### ARQUITECTURA DE VERIFICACIÓN TOPOLÓGICA ###
-
-      1. DETECCIÓN Y ESQUELETO:
-         - Reduce mentalmente la cuerda a una línea central (esqueleto). Ignora grosor, color y material.
-         - Aísla el nudo central del fondo.
-
-      2. IDENTIFICACIÓN DE CRUCES Y GRAFO:
-         - Identifica cada punto donde la cuerda se cruza consigo misma.
-         - Determina qué segmento pasa sobre (over) y cuál bajo (under) en cada cruce.
-         - Construye un grafo topológico: Nodos = cruces, Aristas = segmentos de cuerda.
-
-      3. COMPARACIÓN MULTI-ORIENTACIÓN:
-         - Analiza la imagen del alumno en su orientación original y en su rotación de 180° (proporcionadas abajo).
-         - Considera rotaciones, espejos y deformaciones elásticas (el nudo sigue siendo el mismo si no se deshacen cruces).
-
-      4. SISTEMA DE PUNTUACIÓN (0-100):
-         - Número de cruces coincide: +30 pts
-         - Patrón over/under coincide: +30 pts
-         - Número de bucles coincide: +20 pts
-         - Conectividad del grafo coincide: +20 pts
-
-      ### REGLAS DE CLASIFICACIÓN ###
-      - 90-100: CORRECTO (isCorrect: true)
-      - 70-89: PROBABLEMENTE CORRECTO (isCorrect: true - sé flexible si la topología es clara)
-      - <70: INCORRECTO (isCorrect: false)
-
-      FORMATO DE RESPUESTA (JSON estricto):
-      {
-        "analisis_esqueleto": "Descripción del esqueleto detectado",
-        "mapeo_cruces": "Lista de cruces detectados (ej: Cruce 1: superior sobre inferior)",
-        "grafo_topologico": "Descripción de la conectividad del grafo",
-        "puntuacion_similitud": number,
-        "isCorrect": boolean,
-        "feedback": "Si es correcto, felicita. Si es incorrecto, explica el fallo topológico específico basado en el recorrido de la cuerda."
-      }` }
-    ];
-
-    if (refInfo) {
-      parts.push({ text: "IMAGEN DE REFERENCIA (MODELO A SEGUIR):" });
-      parts.push({
-        inlineData: {
-          mimeType: refInfo.mimeType,
-          data: refInfo.data
-        }
-      });
+    if (!rows || rows.length === 0) {
+      throw new Error('El archivo Excel está vacío.');
     }
 
-    parts.push({ text: "IMAGEN DEL ALUMNO (ORIENTACIÓN ORIGINAL):" });
-    parts.push({
-      inlineData: {
-        mimeType: studentInfo.mimeType,
-        data: studentInfo.data
-      }
-    });
-
-    parts.push({ text: "IMAGEN DEL ALUMNO (ROTADA 180° PARA DOBLE VERIFICACIÓN):" });
-    parts.push({
-      inlineData: {
-        mimeType: rotatedInfo.mimeType,
-        data: rotatedInfo.data
-      }
-    });
-
-    let response;
-    let retries = 0;
-    const maxRetries = 2;
+    // Try to find the header row or assume the first row is data if it looks like it
+    let headerRowIndex = 0;
+    let hasHeaders = false;
     
-    while (retries <= maxRetries) {
-      try {
-        response = await ai.models.generateContent({
-          model: "gemini-3.1-pro-preview",
-          contents: [{ parts }],
-          config: {
-            responseMimeType: "application/json"
-          }
-        });
+    // Look for a row that contains keywords like "type", "text", "discipline"
+    for (let i = 0; i < Math.min(rows.length, 5); i++) {
+      const rowStr = rows[i].join('|').toLowerCase();
+      if (
+        rowStr.includes('type') || 
+        rowStr.includes('tipo') || 
+        rowStr.includes('text') || 
+        rowStr.includes('pregunta') ||
+        rowStr.includes('disciplina') ||
+        rowStr.includes('respuesta') ||
+        rowStr.includes('opciones')
+      ) {
+        headerRowIndex = i;
+        hasHeaders = true;
         break;
-      } catch (err: any) {
-        const isQuotaError = err.message?.includes("429") || err.message?.includes("quota") || err.message?.includes("RESOURCE_EXHAUSTED");
-        if (isQuotaError && retries < maxRetries) {
-          retries++;
-          await new Promise(resolve => setTimeout(resolve, 2000 * retries));
-          continue;
-        }
-        throw err;
       }
     }
 
-    const text = response?.text;
-    if (!text) throw new Error("Empty response from AI");
-    
-    const result = JSON.parse(text);
-    return {
-      isCorrect: !!result.isCorrect,
-      feedback: result.feedback || (result.isCorrect ? "Correcto" : "Incorrecto")
-    };
-  } catch (error: any) {
-    console.error("Error validating image:", error);
-    
-    // Check for specific API errors
-    const errorMsg = error.message || "";
-    if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
-      return { 
-        isCorrect: false, 
-        feedback: "El sistema está saturado. Por favor, espera 10 segundos y vuelve a intentarlo." 
-      };
-    }
+    const headers = hasHeaders ? rows[headerRowIndex].map(h => String(h || '').toLowerCase().replace(/[\s_]/g, '')) : [];
+    const dataRows = rows.slice(hasHeaders ? headerRowIndex + 1 : 0);
 
-    if (errorMsg.includes("INVALID_ARGUMENT") || errorMsg.includes("image")) {
-      return { 
-        isCorrect: false, 
-        feedback: "Error técnico al procesar la imagen. Intenta tomar la foto de nuevo con menos brillo." 
-      };
-    }
+    const questions = dataRows.map((row: any[], rowIndex: number) => {
+      if (!row || row.length === 0) return null;
 
-    return { 
-      isCorrect: false, 
-      feedback: "No se pudo validar la imagen. Asegúrate de que sea clara y esté bien iluminada." 
-    };
+      // Helper to get value by header name or by common index
+      const getVal = (possibleHeaders: string[], defaultIndex: number) => {
+        if (hasHeaders) {
+          for (const pHeader of possibleHeaders) {
+            const idx = headers.indexOf(pHeader.toLowerCase().replace(/[\s_]/g, ''));
+            if (idx !== -1) return row[idx];
+          }
+        }
+        // Fallback to default index if within bounds
+        return row[defaultIndex];
+      };
+
+      const rawId = getVal(['id'], 0);
+      const rawDiscipline = String(getVal(['discipline', 'disciplina'], 1) || '').toUpperCase();
+      const rawType = String(getVal(['type', 'tipo'], 2) || '').toUpperCase();
+      const rawText = getVal(['text', 'pregunta', 'texto'], 3);
+      const rawOptions = getVal(['options', 'opciones'], 4);
+      const rawCorrectAnswer = getVal(['correctanswer', 'respuestacorrecta', 'respuesta'], 5);
+      const rawImageUrl = getVal(['referenceimagenurl', 'referenceimageurl', 'imagen', 'imageurl', 'urlimagen', 'foto', 'fotoreferencia', 'url'], 6);
+      const rawPoints = getVal(['points', 'puntos'], 7);
+
+      if (!rawText) return null;
+
+      // Type mapping
+      let type = QuestionType.MULTIPLE_CHOICE;
+      if (rawType.includes('IMAGEN') || rawType.includes('IMAGE') || rawType.includes('FOTO')) {
+        type = QuestionType.IMAGE_UPLOAD;
+      } else if (rawType.includes('TEST') || rawType.includes('CHOICE') || rawType.includes('OPCION')) {
+        type = QuestionType.MULTIPLE_CHOICE;
+      } else if (rawType.includes('TEXT') || rawType.includes('LIBRE')) {
+        type = QuestionType.FREE_TEXT;
+      } else if (rawType.includes('CODE') || rawType.includes('CODIGO')) {
+        type = QuestionType.CODE;
+      }
+
+      // Discipline mapping
+      let discipline = Discipline.KNOTS;
+      if (rawDiscipline.includes('NUDO') || rawDiscipline.includes('KNOT') || rawDiscipline.includes('CABUYERIA')) {
+        discipline = Discipline.KNOTS;
+      } else if (rawDiscipline.includes('ESCALADA') || rawDiscipline.includes('CLIMB') || rawDiscipline.includes('ROCA')) {
+        discipline = Discipline.CLIMBING;
+      }
+
+      return {
+        id: String(rawId || `q-${rowIndex}-${Math.random().toString(36).substr(2, 5)}`),
+        discipline: discipline as Discipline,
+        type: type as QuestionType,
+        text: String(rawText).trim(),
+        options: rawOptions ? String(rawOptions).split('|').map(o => o.trim()) : undefined,
+        correctAnswer: String(rawCorrectAnswer !== undefined ? rawCorrectAnswer : '').trim(),
+        referenceImageUrl: rawImageUrl ? getRawUrl(String(rawImageUrl).trim()) : undefined,
+        points: parseInt(String(rawPoints || '0'), 10),
+      } as Question;
+    }).filter(q => q !== null) as Question[];
+
+    // Final filter: must have text and if it's multiple choice, it must have options
+    return questions.filter((q: Question) => {
+      const hasText = q.text && q.text.trim().length > 0;
+      if (!hasText) return false;
+
+      if (q.type === QuestionType.MULTIPLE_CHOICE) {
+        return !!q.options && q.options.length > 1;
+      }
+      return true;
+    });
+  } catch (error) {
+    console.error('Error fetching questions from:', finalUrl, error);
+    // We throw the error so the UI can catch it and show a message
+    throw error;
   }
 }
 
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+export function getMockQuestions(): Question[] {
+  return [
+    {
+      id: '1',
+      discipline: Discipline.KNOTS,
+      type: QuestionType.MULTIPLE_CHOICE,
+      text: '¿Cuál de estos nudos es el más adecuado para encordarse al arnés?',
+      options: ['Ocho doble', 'As de guía', 'Nudo de alondra', 'Ballestrinque'],
+      correctAnswer: '0',
+      points: 2
+    },
+    {
+      id: '2',
+      discipline: Discipline.KNOTS,
+      type: QuestionType.IMAGE_UPLOAD,
+      text: 'Realiza un nudo de ocho doble y sube una foto clara.',
+      referenceImageUrl: 'https://picsum.photos/seed/knot8/400/300',
+      points: 5
+    },
+    {
+      id: '3',
+      discipline: Discipline.CLIMBING,
+      type: QuestionType.CODE,
+      text: 'Introduce el código de seguridad de 4 dígitos que aparece en la placa del rocódromo sector A.',
+      correctAnswer: '1234',
+      points: 3
+    }
+  ];
 }
 
+export async function logToGoogleSheets(result: EvaluationResult) {
+  const SCRIPT_URL = import.meta.env.VITE_GOOGLE_SHEETS_URL || (typeof process !== 'undefined' && process.env.VITE_GOOGLE_SHEETS_URL);
+  if (!SCRIPT_URL) {
+    console.warn("Google Sheets URL not configured. Data:", result);
+    return;
+  }
+
+  // Calculate score over 10
+  const scoreOver10 = result.maxScore > 0 ? ((result.totalScore / result.maxScore) * 10).toFixed(2) : "0.00";
+  
+  // Count mistakes
+  const mistakes = result.answers.filter(a => !a.isCorrect).length;
+
+  const payload = {
+    nombre: result.student.firstName,
+    apellidos: result.student.lastName,
+    curso: result.student.course,
+    grupo: result.student.group,
+    edad: result.student.age,
+    puntuacion_cabuyeria: result.discipline === Discipline.KNOTS ? scoreOver10 : '',
+    fallos_cabuyeria: result.discipline === Discipline.KNOTS ? mistakes : '',
+    puntuacion_escalada: result.discipline === Discipline.CLIMBING ? scoreOver10 : '',
+    fallos_escalada: result.discipline === Discipline.CLIMBING ? mistakes : '',
+    fecha_cabuyeria: result.discipline === Discipline.KNOTS ? result.date : '',
+    fecha_escalada: result.discipline === Discipline.CLIMBING ? result.date : ''
+  };
+
+  try {
+    await fetch(SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    console.error('Error logging to Google Sheets:', error);
+  }
+}

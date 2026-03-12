@@ -5,9 +5,14 @@ let aiInstance: GoogleGenAI | null = null;
 
 function getAI(): GoogleGenAI {
   if (!aiInstance) {
-    // In Vite, we prefer import.meta.env, but the project uses process.env via vite.config.ts define.
-    // We provide a fallback to avoid crashes if the variable is undefined.
-    const apiKey = process.env.GEMINI_API_KEY || "";
+    // We try to get the key from multiple possible locations
+    const apiKey = (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || 
+                   (import.meta.env?.VITE_GEMINI_API_KEY) || 
+                   "";
+    
+    if (!apiKey) {
+      console.warn("GEMINI_API_KEY is not defined. AI features will fail.");
+    }
     aiInstance = new GoogleGenAI({ apiKey });
   }
   return aiInstance;
