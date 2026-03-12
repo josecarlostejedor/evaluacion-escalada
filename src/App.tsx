@@ -26,7 +26,6 @@ import {
   EvaluationResult 
 } from './types';
 import { fetchQuestions, logToGoogleSheets, getMockQuestions } from './services/dataService';
-import { validateImageAnswer } from './services/geminiService';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -54,6 +53,7 @@ export default function App() {
   const [validatingImage, setValidatingImage] = useState(false);
   const [feedback, setFeedback] = useState<{ isCorrect: boolean; message: string } | null>(null);
   const [attempts, setAttempts] = useState(0);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
 
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -91,6 +91,7 @@ export default function App() {
     setAnswers([]);
     setFeedback(null);
     setAttempts(0);
+    setUploadedImage(null);
     setState('REGISTRATION');
   };
 
@@ -114,15 +115,9 @@ export default function App() {
     let validationFeedback = "";
 
     if (currentQuestion.type === QuestionType.IMAGE_UPLOAD) {
-      setValidatingImage(true);
-      const result = await validateImageAnswer(
-        value, 
-        currentQuestion.referenceImageUrl!, 
-        currentQuestion.text
-      );
-      isCorrect = result.isCorrect;
-      validationFeedback = result.feedback;
-      setValidatingImage(false);
+      // For IMAGE_UPLOAD, we just store the image and wait for manual validation
+      setUploadedImage(value);
+      return;
     } else if (currentQuestion.type === QuestionType.MULTIPLE_CHOICE) {
       const selectedIndex = String(value).trim();
       const correctVal = String(currentQuestion.correctAnswer).trim();
@@ -132,16 +127,6 @@ export default function App() {
       isCorrect = selectedIndex === correctVal || (!!selectedText && selectedText === correctVal);
     } else if (currentQuestion.type === QuestionType.CODE || currentQuestion.type === QuestionType.FREE_TEXT) {
       isCorrect = value.toLowerCase().trim() === currentQuestion.correctAnswer?.toLowerCase().trim();
-    }
-
-    // Handle retry logic: Only IMAGE_UPLOAD gets a second chance
-    if (!isCorrect && attempts === 0 && currentQuestion.type === QuestionType.IMAGE_UPLOAD) {
-      setFeedback({ 
-        isCorrect: false, 
-        message: validationFeedback || "Respuesta incorrecta. Tienes una segunda oportunidad." 
-      });
-      setAttempts(1);
-      return;
     }
 
     if (isCorrect) {
@@ -161,9 +146,33 @@ export default function App() {
     setFeedback({ isCorrect, message: validationFeedback || (isCorrect ? "¡Correcto!" : "Incorrecto") });
   };
 
+  const handleManualValidation = (isCorrect: boolean) => {
+    if (!currentQuestion || !uploadedImage) return;
+
+    const pointsEarned = isCorrect ? currentQuestion.points : 0;
+    const newAnswer: Answer = {
+      questionId: currentQuestion.id,
+      value: uploadedImage,
+      isCorrect,
+      pointsEarned
+    };
+
+    const updatedAnswers = [...answers, newAnswer];
+    setAnswers(updatedAnswers);
+    
+    // Move to next question immediately as requested: "pasa a la pregunta siguiente"
+    setUploadedImage(null);
+    if (currentQuestionIndex < filteredQuestions.length - 1) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
+    } else {
+      finishQuiz(updatedAnswers);
+    }
+  };
+
   const handleNext = () => {
     setFeedback(null);
     setAttempts(0);
+    setUploadedImage(null);
     if (currentQuestionIndex < filteredQuestions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
@@ -715,37 +724,68 @@ export default function App() {
 
                 {currentQuestion.type === QuestionType.IMAGE_UPLOAD && (
                   <div className="space-y-6">
-                    <div className="flex flex-col items-center gap-6 py-8 border-2 border-dashed border-black/10 rounded-[32px]">
-                      <div className="w-20 h-20 bg-[#f5f5f0] rounded-full flex items-center justify-center text-[#5A5A40]">
-                        <Camera size={32} />
+                    {!uploadedImage ? (
+                      <div className="flex flex-col items-center gap-6 py-8 border-2 border-dashed border-black/10 rounded-[32px]">
+                        <div className="w-20 h-20 bg-[#f5f5f0] rounded-full flex items-center justify-center text-[#5A5A40]">
+                          <Camera size={32} />
+                        </div>
+                        <div className="text-center">
+                          <p className="font-medium">Sube una fotografía de tu ejecución</p>
+                          <p className="text-sm opacity-60">Asegúrate de que el nudo sea claramente visible</p>
+                        </div>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          id="camera-input"
+                          onChange={async e => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = () => handleAnswer(reader.result as string);
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                        <label
+                          htmlFor="camera-input"
+                          className="bg-[#5A5A40] text-white px-8 py-3 rounded-full cursor-pointer hover:bg-[#4a4a35] transition-colors flex items-center gap-2"
+                        >
+                          <Camera size={18} />
+                          Tomar Foto
+                        </label>
                       </div>
-                      <div className="text-center">
-                        <p className="font-medium">Sube una fotografía de tu ejecución</p>
-                        <p className="text-sm opacity-60">Asegúrate de que el nudo sea claramente visible</p>
+                    ) : (
+                      <div className="space-y-6">
+                        <div className="overflow-hidden rounded-3xl bg-[#f5f5f0]/50 border border-black/5 shadow-sm">
+                          <img 
+                            src={uploadedImage} 
+                            alt="Tu ejecución" 
+                            className="w-full h-auto max-h-[400px] object-contain mx-auto"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                        
+                        <div className="text-center space-y-4">
+                          <p className="text-xl font-medium italic text-[#5A5A40]">Chequea el nudo con el modelo o enseñaselo a tu profesor o a tu coevaluador para que te diga si está bien o mál.</p>
+                          <div className="flex gap-4 justify-center">
+                            <button
+                              onClick={() => handleManualValidation(true)}
+                              className="flex-1 max-w-[160px] bg-green-600 text-white py-4 rounded-full font-bold hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                            >
+                              <CheckCircle2 size={20} /> BIEN
+                            </button>
+                            <button
+                              onClick={() => handleManualValidation(false)}
+                              className="flex-1 max-w-[160px] bg-red-600 text-white py-4 rounded-full font-bold hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+                            >
+                              <XCircle size={20} /> MAL
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="hidden"
-                        id="camera-input"
-                        onChange={async e => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = () => handleAnswer(reader.result as string);
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                      <label
-                        htmlFor="camera-input"
-                        className="bg-[#5A5A40] text-white px-8 py-3 rounded-full cursor-pointer hover:bg-[#4a4a35] transition-colors flex items-center gap-2"
-                      >
-                        {validatingImage ? <Loader2 className="animate-spin" /> : <Camera size={18} />}
-                        {validatingImage ? "Validando..." : "Tomar Foto"}
-                      </label>
-                    </div>
+                    )}
                   </div>
                 )}
               </div>
