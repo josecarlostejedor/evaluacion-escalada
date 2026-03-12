@@ -117,43 +117,29 @@ export async function validateImageAnswer(
     }
 
     const parts: any[] = [
-      { text: `Eres un experto mundial en topología de nudos y visión artificial avanzada. Tu misión es comparar la imagen del alumno con la imagen de referencia y determinar si representan el MISMO TIPO DE NUDO basándote EXCLUSIVAMENTE en la estructura topológica (recorrido y entrelazado).
+      { text: `Eres un experto mundial en topología de nudos y visión artificial avanzada. Tu misión es validar si el nudo en la imagen del alumno es ESTRUCTURALMENTE IDÉNTICO al nudo de referencia, basándote exclusivamente en el recorrido de la cuerda (topología).
 
-      CONTEXTO DE LA TAREA: "${questionText}"
+      CONTEXTO: "${questionText}"
 
-      ### REGLA DE ORO: IGNORAR ATRIBUTOS SUPERFICIALES ###
-      - Ignora por completo: color de la cuerda, grosor, textura, material, fondo, iluminación, sombras, escala y ángulo de la foto.
-      - NO digas cosas como "la cuerda es roja" o "el nudo es pequeño". Céntrate únicamente en la geometría del entrelazado.
+      ### PROTOCOLO "ANTIFALLOS" (ANÁLISIS PASO A PASO) ###
+      1. Analiza esta imagen paso a paso antes de nombrar el nudo.
+      2. Identifica el recorrido del cabo: observa detalladamente cómo entra y sale de cada cruce (quién pasa por arriba y quién por abajo).
+      3. Identifica el recorrido del cabo: observa si los dos extremos (el chicote y el firme) de cada lado salen PARALELOS y por el MISMO LADO del bucle que los envuelve.
+      4. Ignora si la silueta general parece una forma conocida (como un número o un ocho).
+      5. Si los cabos salen juntos y paralelos, confírmame si es un nudo de rizo (llano).
+      6. No te dejes engañar por la torsión de la cuerda, el material, el color o el ángulo de la foto.
 
-      ### PROTOCOLO DE ANÁLISIS TOPOLÓGICO (PASO A PASO) ###
+      ### REGLAS DE ORO ###
+      - Ignora por completo el color, grosor, textura de la cuerda, el fondo o la iluminación.
+      - Céntrate únicamente en la geometría del entrelazado (patrón over/under).
+      - El nudo es correcto si la disposición de cruces y bucles es equivalente a la referencia, permitiendo rotaciones y deformaciones elásticas.
 
-      PASO 1: DESCRIPCIÓN ESTRUCTURAL DE LA REFERENCIA
-      - Identifica el número de cruces.
-      - En cada cruce, indica qué segmento pasa por encima y cuál por debajo.
-      - Identifica bucles y la dirección de entrada/salida de los cabos.
-
-      PASO 2: DESCRIPCIÓN ESTRUCTURAL DEL ALUMNO (Analiza tanto la versión original como la rotada 180°)
-      - Realiza el mismo análisis detallado: cruces (over/under), bucles y trayectoria de la cuerda.
-      - Busca el "esqueleto" del nudo (la línea central del recorrido).
-
-      PASO 3: VERIFICACIÓN TÉCNICA ESPECÍFICA (CASO RIZO/LLANO)
-      - Si el nudo solicitado es un Rizo (Square Knot): Verifica que los dos extremos (chicote y firme) de cada lado salgan PARALELOS y por el MISMO LADO del bucle que los envuelve. Si salen cruzados, es un error estructural (nudo de vaca).
-
-      PASO 4: COMPARACIÓN DE INVARIANTES
-      - Compara las descripciones de los pasos 1 y 2.
-      - El nudo es el mismo si la disposición de cruces y bucles es equivalente, incluso si está rotado o deformado elásticamente.
-
-      ### FORMATO DE RESPUESTA (JSON ESTRICTO) ###
+      FORMATO DE RESPUESTA (JSON estricto):
       {
-        "analisis_referencia": "Descripción topológica del modelo.",
-        "analisis_alumno": "Descripción topológica de la foto del alumno.",
-        "checklist": {
-          "num_cruces_coincide": boolean,
-          "patron_over_under_coincide": boolean,
-          "salidas_cabos_correctas": boolean
-        },
+        "analisis_recorrido": "Descripción detallada del recorrido de la cuerda paso a paso.",
+        "verificacion_tecnica": "Confirmación de salidas paralelas y estructura de bucles.",
         "isCorrect": boolean,
-        "feedback": "Si es correcto: '¡Excelente! Has realizado el nudo correctamente.' Si es incorrecto: Explica el fallo estructural específico (ej: 'El cabo derecho pasa por encima cuando debería ir por debajo')."
+        "feedback": "Si es correcto: '¡Excelente! Has realizado el nudo correctamente, respetando la estructura técnica.' Si es incorrecto: Explica el fallo estructural específico basado en el recorrido de la cuerda."
       }` }
     ];
 
@@ -191,11 +177,10 @@ export async function validateImageAnswer(
       try {
         const ai = getAI();
         response = await ai.models.generateContent({
-          model: "gemini-3.1-pro-preview",
+          model: "gemini-3-flash-preview",
           contents: [{ parts }],
           config: {
-            responseMimeType: "application/json",
-            thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
+            responseMimeType: "application/json"
           }
         });
         break;
@@ -213,7 +198,21 @@ export async function validateImageAnswer(
     const text = response?.text;
     if (!text) throw new Error("Empty response from AI");
     
-    const result = JSON.parse(text);
+    // Clean potential markdown blocks and parse JSON
+    const cleanText = text.replace(/```json\n?|```/g, "").trim();
+    let result;
+    try {
+      result = JSON.parse(cleanText);
+    } catch (e) {
+      console.error("JSON parse error:", e, "Raw text:", text);
+      // Fallback if JSON parsing fails but we have a clear indication of correctness
+      const isCorrect = text.toLowerCase().includes('"iscorrect": true') || text.toLowerCase().includes('"iscorrect":true');
+      return {
+        isCorrect,
+        feedback: isCorrect ? "¡Excelente! Nudo validado correctamente." : "El nudo no parece correcto. Revisa el recorrido de la cuerda."
+      };
+    }
+    
     return {
       isCorrect: !!result.isCorrect,
       feedback: result.feedback || (result.isCorrect ? "Correcto" : "Incorrecto")
