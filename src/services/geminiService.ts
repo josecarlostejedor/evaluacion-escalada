@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 
 // Lazy initialization to avoid issues during build or if the key is missing at startup.
 let aiInstance: GoogleGenAI | null = null;
@@ -117,44 +117,39 @@ export async function validateImageAnswer(
     }
 
     const parts: any[] = [
-      { text: `Eres un experto en análisis topológico de nudos y visión por computadora. Tu misión es validar si el nudo del alumno es estructuralmente idéntico al de referencia, ignorando estética y centrándote en la topología.
+      { text: `Eres un experto mundial en topología de nudos y visión artificial avanzada. Tu única tarea es determinar si el nudo en la imagen del alumno es ESTRUCTURALMENTE IDÉNTICO al nudo de referencia, basándote exclusivamente en el recorrido de la cuerda (topología).
 
-      PREGUNTA/TAREA: "${questionText}"
+      CONTEXTO: "${questionText}"
 
-      ### ARQUITECTURA DE VERIFICACIÓN TOPOLÓGICA ###
+      ### PROTOCOLO DE ANÁLISIS TOPOLÓGICO (IGNORAR ESTÉTICA) ###
 
-      1. DETECCIÓN Y ESQUELETO:
-         - Reduce mentalmente la cuerda a una línea central (esqueleto). Ignora grosor, color y material.
-         - Aísla el nudo central del fondo.
+      1. ABSTRACCIÓN DEL MATERIAL:
+         - Ignora por completo el color, grosor, textura, material de la cuerda o el fondo.
+         - Reduce el nudo a su "esqueleto" (línea central que describe el recorrido).
 
-      2. IDENTIFICACIÓN DE CRUCES Y GRAFO:
-         - Identifica cada punto donde la cuerda se cruza consigo misma.
-         - Determina qué segmento pasa sobre (over) y cuál bajo (under) en cada cruce.
-         - Construye un grafo topológico: Nodos = cruces, Aristas = segmentos de cuerda.
+      2. ANÁLISIS DE CRUCES (EL NÚCLEO DEL NUDO):
+         - Identifica el nudo central.
+         - Mapea cada cruce: ¿Qué parte pasa por ARRIBA y cuál por ABAJO?
+         - El nudo es correcto SI Y SOLO SI el patrón de cruces (over/under) y la conectividad de los cabos coinciden con la referencia.
 
-      3. COMPARACIÓN MULTI-ORIENTACIÓN:
-         - Analiza la imagen del alumno en su orientación original y en su rotación de 180° (proporcionadas abajo).
-         - Considera rotaciones, espejos y deformaciones elásticas (el nudo sigue siendo el mismo si no se deshacen cruces).
+      3. CASO ESPECÍFICO: NUDO DE RIZO / LLANO:
+         - Asegúrate de que los dos cabos de un lado salgan por el mismo lado del bucle (paralelos). Si salen cruzados, es un "nudo de vaca" (incorrecto).
+         - Verifica que la estructura sea simétrica topológicamente.
 
-      4. SISTEMA DE PUNTUACIÓN (0-100):
-         - Número de cruces coincide: +30 pts
-         - Patrón over/under coincide: +30 pts
-         - Número de bucles coincide: +20 pts
-         - Conectividad del grafo coincide: +20 pts
+      4. INVARIANZA ESPACIAL:
+         - El nudo es el mismo aunque esté rotado, estirado, apretado o aflojado (siempre que no se cambien los cruces).
+         - Analiza las dos versiones de la imagen del alumno (original y rotada 180°) para confirmar la estructura.
 
-      ### REGLAS DE CLASIFICACIÓN ###
-      - 90-100: CORRECTO (isCorrect: true)
-      - 70-89: PROBABLEMENTE CORRECTO (isCorrect: true - sé flexible si la topología es clara)
-      - <70: INCORRECTO (isCorrect: false)
+      ### CRITERIOS DE EVALUACIÓN ###
+      - CORRECTO (isCorrect: true): La topología (recorrido y cruces) coincide exactamente con el modelo, sin importar que la cuerda sea distinta o la foto esté en otro ángulo.
+      - INCORRECTO (isCorrect: false): Los cruces son distintos, falta un paso de cuerda, o el nudo es de un tipo diferente al solicitado.
 
       FORMATO DE RESPUESTA (JSON estricto):
       {
-        "analisis_esqueleto": "Descripción del esqueleto detectado",
-        "mapeo_cruces": "Lista de cruces detectados (ej: Cruce 1: superior sobre inferior)",
-        "grafo_topologico": "Descripción de la conectividad del grafo",
-        "puntuacion_similitud": number,
+        "analisis_topologico": "Descripción detallada del recorrido de la cuerda y los cruces detectados.",
+        "comparacion_referencia": "Explicación de por qué el recorrido coincide o difiere del modelo.",
         "isCorrect": boolean,
-        "feedback": "Si es correcto, felicita. Si es incorrecto, explica el fallo topológico específico basado en el recorrido de la cuerda."
+        "feedback": "Si es correcto: '¡Excelente! Has realizado el nudo correctamente, respetando la estructura topológica.' Si es incorrecto: Explica exactamente qué cruce o paso de cuerda está mal (ej: 'El cabo derecho debería pasar por debajo del bucle, no por encima')."
       }` }
     ];
 
@@ -195,7 +190,8 @@ export async function validateImageAnswer(
           model: "gemini-3.1-pro-preview",
           contents: [{ parts }],
           config: {
-            responseMimeType: "application/json"
+            responseMimeType: "application/json",
+            thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
           }
         });
         break;
