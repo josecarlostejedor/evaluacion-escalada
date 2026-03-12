@@ -90,6 +90,17 @@ export default function App() {
     setState('REGISTRATION');
   };
 
+  const continueWithOtherDiscipline = () => {
+    // Reset quiz state but keep student data
+    setCurrentQuestionIndex(0);
+    setAnswers([]);
+    setFeedback(null);
+    setAttempts(0);
+    setUploadedImage(null);
+    // Go to discipline selection screen (INTRO)
+    setState('INTRO');
+  };
+
   const handleRegistrationSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setState('INTRO');
@@ -897,18 +908,27 @@ export default function App() {
                   </p>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <div className="flex flex-col gap-4 max-w-md mx-auto">
                   <button
                     onClick={downloadPDF}
-                    className="bg-[#5A5A40] text-white px-8 py-4 rounded-full font-medium hover:bg-[#4a4a35] transition-all flex items-center justify-center gap-2"
+                    className="w-full bg-[#5A5A40] text-white px-8 py-4 rounded-full font-medium hover:bg-[#4a4a35] transition-all flex items-center justify-center gap-2"
                   >
                     <Download size={18} /> Descargar Informe PDF
                   </button>
+                  
+                  <button
+                    onClick={continueWithOtherDiscipline}
+                    className="w-full bg-white border-2 border-[#5A5A40] text-[#5A5A40] px-8 py-4 rounded-full font-medium hover:bg-[#f5f5f0] transition-all flex items-center justify-center gap-2"
+                  >
+                    <Mountain size={18} /> 
+                    {discipline === Discipline.KNOTS ? "Hacer evaluación de Escalada" : "Hacer evaluación de Cabuyería"}
+                  </button>
+
                   <button
                     onClick={resetApp}
-                    className="border border-[#5A5A40] text-[#5A5A40] px-8 py-4 rounded-full font-medium hover:bg-[#5A5A40] hover:text-white transition-all flex items-center justify-center gap-2"
+                    className="w-full border border-red-200 text-red-700 px-8 py-4 rounded-full font-medium hover:bg-red-50 transition-all flex items-center justify-center gap-2"
                   >
-                    <ArrowLeft size={18} /> Repetir Evaluación
+                    <XCircle size={18} /> Salir de la App
                   </button>
                 </div>
               </div>
