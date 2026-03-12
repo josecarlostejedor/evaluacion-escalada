@@ -48,7 +48,6 @@ export default function App() {
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [validatingImage, setValidatingImage] = useState(false);
   const [feedback, setFeedback] = useState<{ isCorrect: boolean; message: string } | null>(null);
   const [attempts, setAttempts] = useState(0);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
@@ -155,45 +154,11 @@ export default function App() {
 
     const updatedAnswers = [...answers, newAnswer];
     setAnswers(updatedAnswers);
-    
-    // Move to next question immediately as requested: "pasa a la pregunta siguiente"
-    setUploadedImage(null);
-    if (currentQuestionIndex < filteredQuestions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
-    } else {
-      finishQuiz(updatedAnswers);
-    }
-  };
-
-  const handleAIValidation = async () => {
-    if (!currentQuestion || !uploadedImage) return;
-    
-    setValidatingImage(true);
-    try {
-      const result = await validateImageAnswer(
-        uploadedImage,
-        currentQuestion.referenceImageUrl,
-        currentQuestion.text
-      );
-      
-      const pointsEarned = result.isCorrect ? currentQuestion.points : 0;
-      const newAnswer: Answer = {
-        questionId: currentQuestion.id,
-        value: uploadedImage,
-        isCorrect: result.isCorrect,
-        pointsEarned
-      };
-
-      const updatedAnswers = [...answers, newAnswer];
-      setAnswers(updatedAnswers);
-      setFeedback({ isCorrect: result.isCorrect, message: result.feedback });
-      setAttempts(2); // End attempts after AI validation
-    } catch (error) {
-      console.error(error);
-      setFeedback({ isCorrect: false, message: "Error al validar con IA. Por favor, usa la validación manual." });
-    } finally {
-      setValidatingImage(false);
-    }
+    setAttempts(2); // Only one attempt
+    setFeedback({ 
+      isCorrect, 
+      message: isCorrect ? "¡Excelente ejecución!" : "El nudo no es correcto según el modelo." 
+    });
   };
 
   const handleNext = () => {
@@ -487,7 +452,12 @@ export default function App() {
       )}
 
       <main className="max-w-4xl mx-auto p-6 py-12">
-        <AnimatePresence mode="wait">
+        {/* Version Marker for Debugging */}
+      <div className="fixed bottom-2 right-2 text-[10px] text-black/20 pointer-events-none z-50">
+        v1.0.2-ai-integrated
+      </div>
+
+      <AnimatePresence mode="wait">
           {state === 'REGISTRATION' && (
             <motion.div
               key="reg"
@@ -801,36 +771,21 @@ export default function App() {
                         </div>
                         
                         <div className="text-center space-y-6">
-                          <p className="text-xl font-medium italic text-[#5A5A40]">Chequea el nudo con el modelo o enseñaselo a tu profesor o a tu coevaluador para que te diga si está bien o mál.</p>
+                          <p className="text-xl font-medium italic text-[#5A5A40]">Chequea el nudo con el modelo o eseñáselo a tu profesor o a tu coevaluador para que te diga si está bien o mal</p>
                           
-                          <div className="flex flex-col gap-4 items-center">
+                          <div className="flex gap-4 w-full justify-center">
                             <button
-                              onClick={handleAIValidation}
-                              disabled={validatingImage}
-                              className="w-full max-w-[340px] bg-[#5A5A40] text-white py-4 rounded-full font-bold hover:bg-[#4a4a35] transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg"
+                              onClick={() => handleManualValidation(true)}
+                              className="flex-1 max-w-[160px] bg-green-600 text-white py-4 rounded-full font-bold hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
                             >
-                              {validatingImage ? (
-                                <Loader2 size={20} className="animate-spin" />
-                              ) : (
-                                <Mountain size={20} />
-                              )}
-                              {validatingImage ? "Analizando nudo..." : "Cotejar con IA"}
+                              <CheckCircle2 size={20} /> BIEN
                             </button>
-                            
-                            <div className="flex gap-4 w-full justify-center">
-                              <button
-                                onClick={() => handleManualValidation(true)}
-                                className="flex-1 max-w-[160px] bg-green-600 text-white py-4 rounded-full font-bold hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-                              >
-                                <CheckCircle2 size={20} /> BIEN
-                              </button>
-                              <button
-                                onClick={() => handleManualValidation(false)}
-                                className="flex-1 max-w-[160px] bg-red-600 text-white py-4 rounded-full font-bold hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
-                              >
-                                <XCircle size={20} /> MAL
-                              </button>
-                            </div>
+                            <button
+                              onClick={() => handleManualValidation(false)}
+                              className="flex-1 max-w-[160px] bg-red-600 text-white py-4 rounded-full font-bold hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+                            >
+                              <XCircle size={20} /> MAL
+                            </button>
                           </div>
                         </div>
                       </div>
