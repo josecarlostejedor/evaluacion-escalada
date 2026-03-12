@@ -24,6 +24,7 @@ import {
   EvaluationResult 
 } from './types';
 import { fetchQuestions, logToGoogleSheets, getMockQuestions } from './services/dataService';
+import { validateImageAnswer } from './services/geminiService';
 import jsPDF from 'jspdf';
 
 function cn(...inputs: ClassValue[]) {
@@ -161,6 +162,37 @@ export default function App() {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
       finishQuiz(updatedAnswers);
+    }
+  };
+
+  const handleAIValidation = async () => {
+    if (!currentQuestion || !uploadedImage) return;
+    
+    setValidatingImage(true);
+    try {
+      const result = await validateImageAnswer(
+        uploadedImage,
+        currentQuestion.referenceImageUrl,
+        currentQuestion.text
+      );
+      
+      const pointsEarned = result.isCorrect ? currentQuestion.points : 0;
+      const newAnswer: Answer = {
+        questionId: currentQuestion.id,
+        value: uploadedImage,
+        isCorrect: result.isCorrect,
+        pointsEarned
+      };
+
+      const updatedAnswers = [...answers, newAnswer];
+      setAnswers(updatedAnswers);
+      setFeedback({ isCorrect: result.isCorrect, message: result.feedback });
+      setAttempts(2); // End attempts after AI validation
+    } catch (error) {
+      console.error(error);
+      setFeedback({ isCorrect: false, message: "Error al validar con IA. Por favor, usa la validación manual." });
+    } finally {
+      setValidatingImage(false);
     }
   };
 
@@ -768,21 +800,37 @@ export default function App() {
                           />
                         </div>
                         
-                        <div className="text-center space-y-4">
+                        <div className="text-center space-y-6">
                           <p className="text-xl font-medium italic text-[#5A5A40]">Chequea el nudo con el modelo o enseñaselo a tu profesor o a tu coevaluador para que te diga si está bien o mál.</p>
-                          <div className="flex gap-4 justify-center">
+                          
+                          <div className="flex flex-col gap-4 items-center">
                             <button
-                              onClick={() => handleManualValidation(true)}
-                              className="flex-1 max-w-[160px] bg-green-600 text-white py-4 rounded-full font-bold hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                              onClick={handleAIValidation}
+                              disabled={validatingImage}
+                              className="w-full max-w-[340px] bg-[#5A5A40] text-white py-4 rounded-full font-bold hover:bg-[#4a4a35] transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg"
                             >
-                              <CheckCircle2 size={20} /> BIEN
+                              {validatingImage ? (
+                                <Loader2 size={20} className="animate-spin" />
+                              ) : (
+                                <Mountain size={20} />
+                              )}
+                              {validatingImage ? "Analizando nudo..." : "Cotejar con IA"}
                             </button>
-                            <button
-                              onClick={() => handleManualValidation(false)}
-                              className="flex-1 max-w-[160px] bg-red-600 text-white py-4 rounded-full font-bold hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
-                            >
-                              <XCircle size={20} /> MAL
-                            </button>
+                            
+                            <div className="flex gap-4 w-full justify-center">
+                              <button
+                                onClick={() => handleManualValidation(true)}
+                                className="flex-1 max-w-[160px] bg-green-600 text-white py-4 rounded-full font-bold hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                              >
+                                <CheckCircle2 size={20} /> BIEN
+                              </button>
+                              <button
+                                onClick={() => handleManualValidation(false)}
+                                className="flex-1 max-w-[160px] bg-red-600 text-white py-4 rounded-full font-bold hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+                              >
+                                <XCircle size={20} /> MAL
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
